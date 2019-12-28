@@ -129,12 +129,3 @@ def line_detect_loss(inputs, data):
 	pos_weight = 1 / lines_gt.mean()
 	line_loss = F.binary_cross_entropy_with_logits(lines_scores, lines_gt, reduction="mean", pos_weight=pos_weight)
 	return line_loss
-
-
-
-
-
-
-
-
-
