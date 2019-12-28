@@ -1,2 +1,2 @@
-from deeplabv3.register import Register
-register = Register()
+from torchtools.register import Register
+register = Register(__file__)
