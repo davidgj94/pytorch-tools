@@ -14,7 +14,9 @@ from torchvision.models.segmentation.fcn import FCN, FCNHead
 from torch.nn import functional as F
 from collections import OrderedDict
 import matplotlib.pyplot as plt
+from .register import register
 
+@register.attach('deeplabv3')
 class Deeplabv3(nn.Module):
 
 	def __init__(self, n_classes, pretrained_model, aux=False):
@@ -66,7 +68,7 @@ class Deeplabv3(nn.Module):
 			return result
 
 
-
+@register.attach('deeplabv3+')
 class Deeplabv3Plus(Deeplabv3):
 	def __init__(self, n_classes, pretrained_model, aux=False, out_planes_skip=48):
 		super(Deeplabv3Plus, self).__init__(n_classes, pretrained_model, aux=aux)
@@ -74,7 +76,7 @@ class Deeplabv3Plus(Deeplabv3):
 		self.decoder.apply(init_conv)
 
 	def forward(self, inputs, return_intermediate=False):
-		result, features = super(Deeplabv3Plus).forward(inputs, return_intermediate=True)
+		result, features = super(Deeplabv3Plus, self).forward(inputs, return_intermediate=True)
 		x_aspp = features['aspp']
 		x_low = features['layer1']
 		x_features = self.decoder(x_aspp, x_low)
@@ -86,6 +88,8 @@ class Deeplabv3Plus(Deeplabv3):
 			input_shape = inputs["image"].shape[-2:]
 			x = F.interpolate(features["decoder"], size=input_shape, mode='bilinear', align_corners=False)
 			seg = self.classifier(x)
+			if not self.training:
+				_, seg = torch.max(seg, 1)
 			result["seg"] = seg
 			return result
 

@@ -9,6 +9,7 @@ import torchtools.lines as lines
 from .deeplab import Deeplabv3Plus, init_conv
 from torchtools.utils import check_gradient
 from sklearn.cluster import MeanShift
+from .register import register
 
 def gabor(theta, sigma_x=0.075, sigma_y=0.75, Lambda=0.2, psi=0.0, kernel_size=51):
 
@@ -66,7 +67,7 @@ class GaborBank(nn.Module):
 		return F.conv2d(_input, gabor_filters)
 
 
-
+@register.attach('angle_net')
 class AngleNet(Deeplabv3Plus):
 	def __init__(self, n_classes, pretrained_model, aux=False, out_planes_skip=48,
 		 angle_step=15.0, min_angle=-45.0, max_angle=45.0, 

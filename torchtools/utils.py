@@ -30,8 +30,6 @@ def get_cfgs_v2(config_path):
 
 def get_cfgs(config_path):
 
-	exper_name = os.path.basename(config_path).split('.')[0]
-
 	with open(config_path, 'r') as stream:
 	    try:
 	        config = yaml.safe_load(stream)

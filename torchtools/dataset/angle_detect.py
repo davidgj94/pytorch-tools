@@ -97,76 +97,6 @@ class AngleDetectDataset(data.Dataset):
         return fmt_str
 
 
-
-@register.attach('angle_detect_dataset_multitask')
-class AngleDetectDatasetMultitask(AngleDetectDataset):
-
-    def __init__(self, **kwargs):
-        self.theta_step = kwargs.pop('theta_step')
-        self.rho_step = kwargs.pop('rho_step')
-        super(AngleDetectDatasetMultitask, self).__init__(**kwargs)
-
-    def get_line_gt(self, true_lines, proposed_lines):
-
-        true_lines = np.array(true_lines)
-        proposed_lines = np.array(proposed_lines)
-
-        n_lines = proposed_lines.shape[0]
-        lines_gt = np.zeros(n_lines, dtype=np.float32)
-        for idx in np.arange(n_lines):
-            distance = np.abs(proposed_lines[idx] - true_lines)
-            close_lines = np.logical_and(distance[:,0] < self.rho_step, distance[:,1] < self.theta_step)
-            lines_gt[idx] = np.any(close_lines).astype(np.float32)
-
-        return lines_gt
-
-
-    def __getitem__(self, index):
-
-        def _extract_edges(mask):
-            if np.any(mask > 0):
-                mask[mask > 0] = 255
-                edges = cv2.Laplacian(mask.astype(np.uint8), cv2.CV_8U)
-                cc = measure.label(edges, background=0)
-                cc_coords = []
-                for cc_idx in np.unique(cc).tolist()[1:]:
-                    y, x = np.where(cc == cc_idx)
-                    cc_coords.append((x, y))
-                return cc_coords
-            else:
-                return None
-
-        data = super(AngleDetectDatasetMultitask, self).__getitem__(index)
-
-        label = data['label']
-        label[(label != 255)] = np.clip(label[(label != 255)] - 1, a_min=0, a_max=2)
-        data.update(label=label)
-
-        # idx = data['angle_range_label']
-        # if idx != 255:
-
-        #     edges_coords = _extract_edges(label)
-        #     label_test = (data['label_test'] == 1)
-
-        #     angle_range_v = np.array((self.rot_angles[idx], self.rot_angles[idx+1]))
-        #     angle_range_h = angle_range_v + 90
-        #     sz = label_test.shape
-            
-        #     proposed_lines_v, line_endpoints_v = lines.get_line_proposals(angle_range_v, sz, angle_step=self.theta_step, rho_step=self.rho_step, edges_coords=edges_coords, label=label)
-        #     true_lines_v, _ = lines.extract_lines(label_test, (self.min_angle, self.max_angle))
-        #     lines_gt_v = self.get_line_gt(true_lines_v, proposed_lines_v)
-
-        #     proposed_lines_h, line_endpoints_h = lines.get_line_proposals(angle_range_h, sz, angle_step=self.theta_step, rho_step=self.rho_step, edges_coords=edges_coords, label=label)
-        #     true_lines_h, _ = lines.extract_lines(label_test, (self.min_angle + 90.0, self.max_angle + 90.0))
-        #     lines_gt_h = self.get_line_gt(true_lines_h, proposed_lines_h)
-
-        #     proposed_lines_endpoints = np.array(line_endpoints_v + line_endpoints_h, dtype=np.float32)
-        #     lines_gt = np.append(lines_gt_v, lines_gt_h)
-
-        #     data.update(proposed_lines_endpoints=proposed_lines_endpoints, lines_gt=lines_gt)
-
-        return data
-
 @register.attach('angle_detect_dataset_v2')
 class AngleDetectDatataset_v2(AngleDetectDataset):
 
@@ -352,7 +282,7 @@ class AngleDetectDatataset_v2(AngleDetectDataset):
                 proposed_lines_h=proposed_lines_h,
                 vis_image=vis_image,
                 )
-
+                
         return data
 
 

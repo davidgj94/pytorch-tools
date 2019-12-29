@@ -1,22 +1,20 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np;
+import numpy as np
 import torchvision
-from deeplabv3.dataset import get_dataset
-from deeplabv3.model import get_model
-from deeplabv3.optimizer import get_optimizer
-from deeplabv3.scheduler import get_scheduler
-from deeplabv3.loss import get_loss
-import deeplabv3.utils as utils
-import pdb; pdb.set_trace()
+from torchtools.dataset import get_dataset
+from torchtools.model import get_model
+from torchtools.loss import get_loss
+import torchtools.utils as utils
+import pdb
 import time
 from tqdm import tqdm
 from skimage.io import imsave, imread
 import os.path
 from argparse import ArgumentParser
 from torchsummary import summary
-from deeplabv3.save import CheckpointSaver
+from torchtools.save import CheckpointSaver
 from pathlib import Path
 from val import validate
 from train import train
@@ -75,12 +73,6 @@ if __name__ == "__main__":
 		model_train = get_model(num_classes, training_cfg["model"], training_cfg.get('aux_loss', False)).to(device)
 		train_dataloader = get_dataloader(_id_list_path.format('train'), training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
 
-		val_expers = {}
-		for _val_exper in val_cfg['val_expers']:
-			model_val = get_model(num_classes, _val_exper["model"]).to(device)
-			val_dataloader = get_dataloader(_id_list_path.format('val'), _val_exper['dataset'], val_cfg['batch_size'], shuffle=False)
-			val_expers[_val_exper['name']] = dict(model_val=model_val, val_dataloader=val_dataloader)
-
 		criterion = get_loss(training_cfg['loss'])
 		
 		optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.0005, momentum=0.9, weight_decay=1e-5)
@@ -94,11 +86,6 @@ if __name__ == "__main__":
 			current_epoch = last_checkpoint["epoch"]
 		else:
 			current_epoch = 0
-			
-		scheduler = get_scheduler(training_cfg['scheduler']['name'])(optimizer, **training_cfg['scheduler']["params"])
-
-		# results_dir = os.path.join('results', args.dataset, 'partition_{}', exper_name).format(partition_number)
-		# saver_factory = ResultsSaverFactory(num_classes, results_dir, current_epoch)
 		checkpoint_saver = CheckpointSaver(checkpoint_dir, current_epoch)
 
 		for epoch in range(args.num_epochs):
@@ -113,23 +100,8 @@ if __name__ == "__main__":
 					train(model_train, 
 						train_dataloader, 
 						criterion, 
-						optimizer, 
-						scheduler, 
-						device, 
+						optimizer,
 						training_cfg)
 
 				elif (epoch + 1) % val_cfg['val_epochs'] == 0:
 					checkpoint_saver(epoch, model_train, optimizer)
-
-					# for val_exper_name, val_exper in val_expers.items():
-					# 	val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
-					# 	root_folder = val_dataloader.dataset.img_root
-					# 	results_saver = saver_factory.get_saver(val_exper_name, 
-					# 											root_folder, 
-					# 											epoch)
-					# 	val_model.load_state_dict(model_train.state_dict(), strict=False)
-					# 	validate(val_model, 
-					# 		val_dataloader, 
-					# 		num_classes, 
-					# 		device, 
-					# 		saver=results_saver)

@@ -1,5 +1,5 @@
 import torch
-from deeplabv3.metrics import AverageMeter
+from torchtools.metrics import AverageMeter
 from tqdm import tqdm
 from argparse import ArgumentParser
 from pathlib import Path
@@ -15,7 +15,7 @@ def set_bn_eval(m):
 		m.eval()
 
 
-def train(train_model, train_dataloader, criterion, optimizer, scheduler, device, training_cfg):
+def train(train_model, train_dataloader, criterion, optimizer, training_cfg):
 
 	train_model.train()
 	train_model.apply(set_bn_eval)
@@ -42,7 +42,6 @@ def train(train_model, train_dataloader, criterion, optimizer, scheduler, device
 			loss.backward()
 			
 			running_loss.update(loss.item() * iter_size, n=train_dataloader.batch_size)
-			scheduler.step()
 
 			if _iter > 0 and _iter % iter_size == 0:
 				optimizer.step()

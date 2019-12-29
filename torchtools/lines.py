@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from skimage.transform import hough_line, hough_line_peaks
 from scipy.signal import find_peaks
-import deeplabv3.vis as vis
+import torchtools.vis as vis
 import math
 from scipy.spatial import distance
 from functools import partial

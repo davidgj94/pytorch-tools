@@ -1,6 +1,3 @@
-from .register import register
-import torchtools.dataset.dataset
-import  torchtools.dataset.angle_detect
-import  torchtools.dataset.video
+from .register import register; register.load_modules()
 get_dataset = register.get
 

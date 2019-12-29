@@ -1,2 +1,2 @@
 from torchtools.register import Register
-register = Register()
+register = Register(__file__)
