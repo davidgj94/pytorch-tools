@@ -14,14 +14,13 @@ from torchvision.models.segmentation.fcn import FCN, FCNHead
 from torch.nn import functional as F
 from collections import OrderedDict
 import matplotlib.pyplot as plt
-import torchtools.lines as lines
 
 class Deeplabv3(nn.Module):
 
 	def __init__(self, n_classes, pretrained_model, aux=False):
-		super(_Deeplabv3, self).__init__()
+		super(Deeplabv3, self).__init__()
 		self.backbone = pretrained_model.backbone
-		self.aspp = list(pretrained_model.classifier.children())[0])
+		self.aspp = list(pretrained_model.classifier.children())[0]
 		self.classifier = nn.Conv2d(256, n_classes, 1, 1, 0, 1, bias=False)
 		init_conv(self.classifier)
 
@@ -128,7 +127,7 @@ class DeepLabDecoder(nn.Module):
 		x = torch.cat([x_low, x], dim=1)
 		x = self.fuse_conv(x)
 		return x
-		
+
 
 def _segm_resnet(name, backbone_name, num_classes, aux, pretrained_backbone=True, replace_stride_with_dilation=[False, True, True], rates=[12, 24, 36], return_layers = {'layer4': 'out'}):
 	backbone = resnet.__dict__[backbone_name](
