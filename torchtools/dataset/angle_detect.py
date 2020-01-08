@@ -117,9 +117,9 @@ class AngleDetectDatataset_v2(AngleDetectDataset):
     def __init__(self, **kwargs):
         kernel = kwargs.pop('kernel_size')
         self.margin = int((kernel - 1) // 2)
-        self.theta_step = kwargs.pop('theta_step', 2.5)
-        self.rho_step = kwargs.pop('rho_step', 25)
-        self.tresh_h = kwargs.pop('tresh_h', 0.65)
+        self.theta_step = kwargs.pop('theta_step', 1.5)
+        self.rho_step = kwargs.pop('rho_step', 10)
+        self.tresh_h = kwargs.pop('tresh_h', 0.5)
         self.tresh_l = kwargs.pop('tresh_l', 0.25)
         self.debug = kwargs.pop('debug', False)
         super(AngleDetectDatataset_v2, self).__init__(**kwargs)
@@ -267,10 +267,6 @@ class AngleDetectDatataset_v2(AngleDetectDataset):
             true_lines_h, _ = lines.extract_lines(label_test, angle_range_h)
             lines_h_iou = self.get_lines_iou(true_lines_h, proposed_lines_h, label)
 
-
-            # lines_endpoints_v, lines_gt_v = self.get_lines_gt(np.array(lines_endpoints_v), lines_v_iou)
-            # lines_endpoints_h, lines_gt_h = self.get_lines_gt(np.array(lines_endpoints_h), lines_h_iou)
-
             lines_endpoints_v, lines_gt_v, (is_positive_v, is_negative_v) = self.get_lines_gt(np.array(lines_endpoints_v), lines_v_iou, return_is=True)
             if lines_endpoints_v.shape[0] == 0:
                 pdb.set_trace()
@@ -278,18 +274,19 @@ class AngleDetectDatataset_v2(AngleDetectDataset):
                 self.plot_gt(true_lines_v, np.array(proposed_lines_v)[is_positive_v].tolist(), label)
                 self.plot_gt(true_lines_v, np.array(proposed_lines_v)[is_negative_v].tolist(), label)
                 plt.show()
-
             proposed_lines_v = np.array(proposed_lines_v)
             proposed_lines_v = np.vstack((proposed_lines_v[is_positive_v], proposed_lines_v[is_negative_v]))
             
             lines_endpoints_h, lines_gt_h, (is_positive_h, is_negative_h) = self.get_lines_gt(np.array(lines_endpoints_h), lines_h_iou, return_is=True)
             if lines_endpoints_h.shape[0] == 0:
                 pdb.set_trace()
+            if self.debug:
+                self.plot_gt(true_lines_h, np.array(proposed_lines_h)[is_positive_h].tolist(), label)
+                self.plot_gt(true_lines_h, np.array(proposed_lines_h)[is_negative_h].tolist(), label)
+                plt.show()
             proposed_lines_h = np.array(proposed_lines_h)
             proposed_lines_h = np.vstack((proposed_lines_h[is_positive_h], proposed_lines_h[is_negative_h]))
-            self.plot_gt(true_lines_h, np.array(proposed_lines_h)[is_positive_h].tolist(), label)
-            self.plot_gt(true_lines_h, np.array(proposed_lines_h)[is_negative_h].tolist(), label)
-            plt.show()
+           
             
             lines_gt = np.append(lines_gt_v, lines_gt_h)
             data.update(lines_endpoints_v=lines_endpoints_v, 
