@@ -13,6 +13,7 @@ class Loss:
 	def __init__(self, losses_list):
 
 		self.losses = {}
+		# hay que cambiar el cfg para que sea dict no lista
 		for el in losses_list:
 			loss_name = str(*el.keys())
 			loss_weight = el[loss_name]
@@ -53,6 +54,43 @@ def multitask(inputs, data):
 		loss_2c = F.nll_loss(probs_2class, targets_2classes)
 
 	return loss_3c + loss_2c
+
+@register.attach('multitask_v2')
+def multitask_v2(inputs, data):
+
+	seg = inputs["seg"]
+	device = seg.device
+	targets_3classes = data['label_3c'].to(device)
+	targets_2classes = data['label_2c'].to(device)
+	weights = data['weights'].to(device)
+
+	seg = seg.transpose(0,1)
+	seg_0, seg_1 = seg[:2]
+	seg_diff = seg_1 - seg_0
+	seg_max = torch.max(seg_0, seg_1).unsqueeze(0)
+	seg = torch.cat([seg_max, seg[2:]], 0).transpose(0,1)
+
+	loss_3c = F.cross_entropy(seg, targets_3classes, ignore_index=255)
+	loss_2c = F.binary_cross_entropy_with_logits(seg_diff, targets_2classes, weight=weights)
+
+	return loss_3c + loss_2c
+
+@register.attach('multitask_v3')
+def multitask_v3(inputs, data):
+
+	x_diff = inputs["x_diff"]
+	x_max = inputs["x_max"]
+	device = x_diff.device
+
+	targets_3classes = data['label_3c'].to(device)
+	targets_2classes = data['label_2c'].to(device)
+	weights = data['weights'].to(device)
+
+	loss_3c = F.cross_entropy(x_max, targets_3classes, ignore_index=255)
+	loss_2c = F.binary_cross_entropy_with_logits(x_diff, targets_2classes, weight=weights)
+
+	return loss_3c + loss_2c
+
 
 @register.attach('cross_entropy')
 def cross_entropy(inputs, data):
@@ -95,8 +133,6 @@ def dice_loss(inputs, data):
 
 @register.attach('margin_ranking')
 def margin_ranking_loss(inputs, data, margin=0.1):
-
-	# Usar siempre junto con cross-entropy
 
 	hist = inputs["hist"]
 	device = hist.device

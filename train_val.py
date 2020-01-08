@@ -41,8 +41,6 @@ def get_last_checkpoint(checkpoint_dir):
 def parse_args():
 	parser = ArgumentParser()
 	parser.add_argument('--config', type=str, required=True)
-	parser.add_argument('--dataset', type=str, required=True)
-	parser.add_argument('--partitions', nargs='+', type=int)
 	parser.add_argument('--num_epochs', type=int, default=1)
 	parser.add_argument('-cpu', dest='use_cpu', action='store_true')
 	parser.set_defaults(use_cpu=False)
@@ -52,56 +50,44 @@ def parse_args():
 if __name__ == "__main__":
 
 	args = parse_args()
-	exper_name = os.path.basename(args.config).split(".")[0]
-	dataset_dir = os.path.join('list', args.dataset)
 
 	num_classes, training_cfg, val_cfg = utils.get_cfgs(args.config)
 	device = torch.device("cuda:0" if torch.cuda.is_available() and not args.use_cpu else "cpu")
 
-	for glob in Path(os.path.join(dataset_dir)).glob("*"):
+	id_list_path = os.path.join('test', 'list', 'train.txt')
+	model_train = get_model(num_classes, training_cfg["model"], training_cfg.get('aux_loss', False)).to(device)
+	train_dataloader = get_dataloader(id_list_path, training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
 
-		partition_dir = str(glob)
-		partition_number = int(glob.parts[-1].split("_")[-1])
+	criterion = get_loss(training_cfg['loss'])
+	
+	optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.0005, momentum=0.9, weight_decay=1e-5)
 
-		if args.partitions is not None:
-			if partition_number not in args.partitions:
-				continue
+	exper_name = os.path.basename(args.config).split(".")[0]
+	checkpoint_dir = os.path.join('test', 'checkpoint', exper_name)
+	last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
+	if last_checkpoint_path is not None:
+		print("Checkpoint")
+		last_checkpoint = torch.load(last_checkpoint_path)
+		model_train.load_state_dict(last_checkpoint["model_state_dict"], strict=False)
+		current_epoch = last_checkpoint["epoch"]
+	else:
+		current_epoch = 0
+	checkpoint_saver = CheckpointSaver(checkpoint_dir, current_epoch)
 
-		partition = os.path.join(dataset_dir, 'partition_{}').format(partition_number)
-		_id_list_path = os.path.join(partition, '{}.txt')
+	for epoch in range(args.num_epochs):
 
-		model_train = get_model(num_classes, training_cfg["model"], training_cfg.get('aux_loss', False)).to(device)
-		train_dataloader = get_dataloader(_id_list_path.format('train'), training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
+		print('Epoch {}/{}'.format(epoch, args.num_epochs - 1))
+		print('-' * 10)
 
-		criterion = get_loss(training_cfg['loss'])
-		
-		optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.0005, momentum=0.9, weight_decay=1e-5)
+		# Each epoch has a training and validation phase
+		for phase in ['train', 'val']:
 
-		checkpoint_dir = os.path.join('checkpoint', args.dataset, 'partition_{}', exper_name).format(partition_number)
-		last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
-		if last_checkpoint_path is not None:
-			print("Checkpoint")
-			last_checkpoint = torch.load(last_checkpoint_path)
-			model_train.load_state_dict(last_checkpoint["model_state_dict"], strict=False)
-			current_epoch = last_checkpoint["epoch"]
-		else:
-			current_epoch = 0
-		checkpoint_saver = CheckpointSaver(checkpoint_dir, current_epoch)
+			if phase == 'train':
+				train(model_train, 
+					train_dataloader, 
+					criterion, 
+					optimizer,
+					training_cfg)
 
-		for epoch in range(args.num_epochs):
-
-			print('Epoch {}/{}'.format(epoch, args.num_epochs - 1))
-			print('-' * 10)
-
-			# Each epoch has a training and validation phase
-			for phase in ['train', 'val']:
-
-				if phase == 'train':
-					train(model_train, 
-						train_dataloader, 
-						criterion, 
-						optimizer,
-						training_cfg)
-
-				elif (epoch + 1) % val_cfg['val_epochs'] == 0:
-					checkpoint_saver(epoch, model_train, optimizer)
+			elif (epoch + 1) % val_cfg['val_epochs'] == 0:
+				checkpoint_saver(epoch, model_train, optimizer)

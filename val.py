@@ -59,6 +59,7 @@ def parse_args():
 	parser = ArgumentParser()
 	parser.add_argument('--config', type=str, required=True)
 	parser.add_argument('-train', dest='train', action='store_true')
+	parser.add_argument('--epoch', type=int)
 	parser.set_defaults(train=False)
 	parser.add_argument('-cpu', dest='use_cpu', action='store_true')
 	parser.set_defaults(use_cpu=False)
@@ -99,12 +100,16 @@ if __name__ == "__main__":
 
 	exper_name = os.path.basename(args.config).split(".")[0]
 	checkpoint_dir = os.path.join('test', 'checkpoint', exper_name)
-	last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
+	if args.epoch is not None:
+		last_checkpoint_path = os.path.join(checkpoint_dir, "epoch_{}.pth".format(args.epoch))
+	else:
+		last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
+
 	if last_checkpoint_path is not None:
 		last_checkpoint = torch.load(last_checkpoint_path)
 		model_train.load_state_dict(last_checkpoint["model_state_dict"], strict=False)
 		current_epoch = last_checkpoint["epoch"]
-		print("CHECKPOINT")
+		print("CHECKPOINT: {}".format(last_checkpoint_path))
 	else:
 		current_epoch = 0
 
@@ -113,7 +118,8 @@ if __name__ == "__main__":
 		val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
 		val_model.load_state_dict(model_train.state_dict(), strict=False)
 		########### Aquí definimos la métrica que vamos a utilizar (en un futuro mediante fichero conf) ###########################
-		metric = RunningScore(num_classes, pred_name="seg", label_name="label")
+		#metric = RunningScore(num_classes, pred_name="seg", label_name="label")
+		metric = AccuracyAngleRange(pred_name="hist", label_name="angle_range_label")
 		save_vis = None
 		###########################################################################################################################
 		validate(val_model, val_dataloader, metric, save_vis)

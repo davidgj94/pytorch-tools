@@ -26,7 +26,7 @@ from skimage import measure
 class AngleDetectDataset(data.Dataset):
 
     def __init__(self, root, id_list_path, 
-    	angle_step=15.0, min_angle=-45.0, max_angle=45.0, augmentations=[]):
+    	angle_step=7.5, min_angle=-45.0, max_angle=45.0, augmentations=[]):
     
         self.root = root
         self.id_list = np.loadtxt(id_list_path, dtype=str)
@@ -62,8 +62,19 @@ class AngleDetectDataset(data.Dataset):
         image, _label = self.augmentations(img, np.dstack((label, label_test)))
         vis_image = image.copy()
         label, label_test = np.dsplit(_label, 2)
-        label = np.squeeze(label).astype(np.int64)
-        label_test = np.squeeze(label_test).astype(np.int64)
+        label = np.squeeze(label)
+        label_test = np.squeeze(label_test)
+
+        mask = (label != 255)
+        label_3c = label.copy()
+        label_3c[label == 0] = 1
+        label_3c[mask] -= 1
+        label_3c = label_3c.astype(np.int64)
+        label_2c = (label == 1).astype(np.float32)
+        weights = np.logical_or(label == 1, label == 0).astype(np.float32)
+
+        label = label.astype(np.int64)
+        label_test = label_test.astype(np.int64)
 
         image = TF.to_tensor(image)
         image = TF.normalize(image, self.mean, self.var)
@@ -86,6 +97,9 @@ class AngleDetectDataset(data.Dataset):
             margin_label=margin_label, 
             label_test=label_test, 
             label=label,
+            label_2c=label_2c,
+            label_3c=label_3c,
+            weights=weights
             )
 
     def __len__(self):
@@ -107,9 +121,9 @@ class AngleDetectDatataset_v2(AngleDetectDataset):
         self.rho_step = kwargs.pop('rho_step', 25)
         self.tresh_h = kwargs.pop('tresh_h', 0.65)
         self.tresh_l = kwargs.pop('tresh_l', 0.25)
+        self.debug = kwargs.pop('debug', False)
         super(AngleDetectDatataset_v2, self).__init__(**kwargs)
         self.id_list = [img_id for img_id in self.id_list.tolist() if "APR" in img_id]
-
 
     # def get_line_gt(self, true_lines, proposed_lines):
 
@@ -260,19 +274,22 @@ class AngleDetectDatataset_v2(AngleDetectDataset):
             lines_endpoints_v, lines_gt_v, (is_positive_v, is_negative_v) = self.get_lines_gt(np.array(lines_endpoints_v), lines_v_iou, return_is=True)
             if lines_endpoints_v.shape[0] == 0:
                 pdb.set_trace()
+            if self.debug:
+                self.plot_gt(true_lines_v, np.array(proposed_lines_v)[is_positive_v].tolist(), label)
+                self.plot_gt(true_lines_v, np.array(proposed_lines_v)[is_negative_v].tolist(), label)
+                plt.show()
+
             proposed_lines_v = np.array(proposed_lines_v)
             proposed_lines_v = np.vstack((proposed_lines_v[is_positive_v], proposed_lines_v[is_negative_v]))
-            # self.plot_gt(true_lines_v, np.array(proposed_lines_v)[is_positive_v].tolist(), label)
-            # self.plot_gt(true_lines_v, np.array(proposed_lines_v)[is_negative_v].tolist(), label)
-            # plt.show()
+            
             lines_endpoints_h, lines_gt_h, (is_positive_h, is_negative_h) = self.get_lines_gt(np.array(lines_endpoints_h), lines_h_iou, return_is=True)
             if lines_endpoints_h.shape[0] == 0:
                 pdb.set_trace()
             proposed_lines_h = np.array(proposed_lines_h)
             proposed_lines_h = np.vstack((proposed_lines_h[is_positive_h], proposed_lines_h[is_negative_h]))
-            # self.plot_gt(true_lines_h, np.array(proposed_lines_h)[is_positive_h].tolist(), label)
-            # self.plot_gt(true_lines_h, np.array(proposed_lines_h)[is_negative_h].tolist(), label)
-            # plt.show()
+            self.plot_gt(true_lines_h, np.array(proposed_lines_h)[is_positive_h].tolist(), label)
+            self.plot_gt(true_lines_h, np.array(proposed_lines_h)[is_negative_h].tolist(), label)
+            plt.show()
             
             lines_gt = np.append(lines_gt_v, lines_gt_h)
             data.update(lines_endpoints_v=lines_endpoints_v, 

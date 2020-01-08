@@ -126,3 +126,24 @@ class MultiTaskDataset(BaseDataset):
 
         data.update(label_3c=label_3c, label_2c=label_2c)
         return data
+
+@register.attach('multitask_v2')
+class MultiTaskDataset_v2(BaseDataset):
+
+    def __init__(self, root, id_list_path, augmentations=[], masks_test=False, change_ignore_index=False):
+        super(MultiTaskDataset_v2, self).__init__(root, id_list_path, augmentations, masks_test=False, change_ignore_index=False)
+
+    def __getitem__(self, index):
+        data = super(MultiTaskDataset_v2, self).__getitem__(index)
+        label = data['label']
+
+        mask = (label != 255)
+        label_3c = label.copy()
+        label_3c[label == 0] = 1
+        label_3c[mask] -= 1
+
+        label_2c = (label == 1).astype(np.float32)
+        weights = np.logical_or(label == 1, label == 0).astype(np.float32)
+
+        data.update(label_3c=label_3c, label_2c=label_2c, weights=weights)
+        return data

@@ -28,12 +28,10 @@ class Deeplabv3(nn.Module):
 
 		self.aux_clf = None
 		if aux:
-			aux_clf = pretrained_model.aux_classifier
-			aux_clf_out = nn.Conv2d(256, n_classes, 1, 1, 0, 1, bias=False)
-			init_conv(aux_clf_out)
-			aux_clf_layers = list(aux_clf.children())
-			aux_clf_layers[-1] = aux_clf_out
-			self.aux_clf = nn.Sequential(*aux_clf_layers)
+			aux_net = list(pretrained_model.aux_classifier.children())[:-1]
+			self.aux_net = nn.Sequential(*aux_net)
+			self.aux_clf = nn.Conv2d(256, n_classes, 1, 1, 0, 1, bias=False)
+			init_conv(self.aux_clf)
 
 	def get_device(self,):
 		return self.classifier.weight.device
@@ -49,22 +47,29 @@ class Deeplabv3(nn.Module):
 		x = features["layer4"]
 		x_features = self.aspp(x)
 		features['aspp'] = x_features
-
-		result = OrderedDict()
 		
-		if self.training and (self.aux_clf is not None):
+		if self.aux_clf is not None:
 			x = features["layer3"]
-			x = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
-			seg_aux = self.aux_clf(x)
-			result["aux"] = OrderedDict()
-			result["aux"]["seg"] = seg_aux
-			
+			x_features_aux = self.aux_net(x)
+			features['aux'] = x_features_aux
+		
 		if return_intermediate:
-			return result, features
+			return features
 		else:
+
+			result = OrderedDict()
+
+			if "aux" in features:
+				result["aux"] = OrderedDict()
+				x = F.interpolate(features["aux"], size=input_shape, mode='bilinear', align_corners=False)
+				seg_aux = self.aux_clf(x)
+				result["aux"]["seg"] = seg_aux
+
+			result["out"] = OrderedDict()
 			x = F.interpolate(features['aspp'], size=input_shape, mode='bilinear', align_corners=False)
 			seg = self.classifier(x)
-			result["seg"] = seg
+			result["out"]["seg"] = seg
+			
 			return result
 
 
@@ -76,21 +81,36 @@ class Deeplabv3Plus(Deeplabv3):
 		self.decoder.apply(init_conv)
 
 	def forward(self, inputs, return_intermediate=False):
-		result, features = super(Deeplabv3Plus, self).forward(inputs, return_intermediate=True)
+		features = super(Deeplabv3Plus, self).forward(inputs, return_intermediate=True)
 		x_aspp = features['aspp']
 		x_low = features['layer1']
 		x_features = self.decoder(x_aspp, x_low)
 		features["decoder"] = x_features
 
 		if return_intermediate:
-			return result, features
+			return features
 		else:
+
+			result = OrderedDict()
+
 			input_shape = inputs["image"].shape[-2:]
+
+			if self.training and "aux" in features:
+				result["aux"] = OrderedDict()
+				x = F.interpolate(features["aux"], size=input_shape, mode='bilinear', align_corners=False)
+				seg_aux = self.aux_clf(x)
+				result["aux"]["seg"] = seg_aux
+
 			x = F.interpolate(features["decoder"], size=input_shape, mode='bilinear', align_corners=False)
 			seg = self.classifier(x)
+
 			if not self.training:
 				_, seg = torch.max(seg, 1)
-			result["seg"] = seg
+				result["seg"] = seg
+			else:
+				result["out"] = OrderedDict()
+				result["out"]["seg"] = seg
+				
 			return result
 
 

@@ -70,8 +70,8 @@ class GaborBank(nn.Module):
 @register.attach('angle_net')
 class AngleNet(Deeplabv3Plus):
 	def __init__(self, n_classes, pretrained_model, aux=False, out_planes_skip=48,
-		 angle_step=15.0, min_angle=-45.0, max_angle=45.0, 
-		 kernel_size=51, pos=0, detect_lines=False):
+		 angle_step=7.5, min_angle=-45.0, max_angle=45.0, 
+		 kernel_size=101, detect_lines=True):
 
 		super(AngleNet, self).__init__(n_classes, 
 									   pretrained_model,
@@ -91,21 +91,20 @@ class AngleNet(Deeplabv3Plus):
 		self.gabor_bank.weight = nn.Parameter(filter_weights, requires_grad=True)
 		self.relu = nn.ReLU()
 
+		self.line_clf = None
 		if detect_lines:
 
 			self.resol = 10.0
 			self.test_tresh = 0.75
+			self.width = 7
 
-			width = 7
-			input_size = (width, 2 * width)
+			input_size = (self.width, self.width)
 			nfilters = 100
 
 			self.prelu = nn.PReLU(init=0.75)
 			self.avg_pooling = nn.AdaptiveAvgPool2d(input_size)
 			self.line_clf = nn.Sequential(
 				nn.Conv2d(1, nfilters, kernel_size=input_size, stride=1, bias=False),
-				nn.ReLU(),
-				nn.Conv2d(nfilters, nfilters, kernel_size=1, stride=1, bias=False),
 				nn.ReLU(),
 				nn.Conv2d(nfilters, 1, kernel_size=1, stride=1, bias=False))
 			self.line_clf.apply(init_conv)
@@ -179,9 +178,8 @@ class AngleNet(Deeplabv3Plus):
 
 		return torch.max(lines_scores, lines_scores_flip)
 
-	def lines_detect_test(self, x_gabor, proposed_lines, lines_endpoints):
+	def lines_detect_test(self, lines_scores, proposed_lines):
 
-		lines_scores = self.lines_detect(x_gabor, lines_endpoints, plot=False)
 		lines_preds = torch.sigmoid(lines_scores).squeeze().cpu().numpy() > self.test_tresh
 		_lines = proposed_lines.squeeze(0).cpu().numpy()[lines_preds]
 
@@ -200,6 +198,7 @@ class AngleNet(Deeplabv3Plus):
 	def forward(self, inputs):
 
 		def _gabor_bank(x):
+			bs = x.shape[0]
 			x = self.gabor_bank(x)
 			x = x.transpose(0,1)
 			x = x[:-1] + x[1:]
@@ -207,60 +206,55 @@ class AngleNet(Deeplabv3Plus):
 			x_v = x[:n_intervals]
 			x_h = x[n_intervals:]
 			x_vh = torch.max(x_v, x_h).transpose(0,1)
-			hist = self.relu(x_vh).view(1, n_intervals,-1).mean(2)
+			hist = self.relu(x_vh).view(bs, n_intervals,-1).mean(2)
 			return (x_v, x_h), hist
 
 		input_shape = inputs["image"].shape[-2:]
-		result, features = super(AngleNet).forward(inputs, return_intermediate=True)
-		x_features = features["decoder"].transpose(0,1)
+		features = super(AngleNet, self).forward(inputs, return_intermediate=True)
+		x = F.interpolate(features["decoder"], size=input_shape, mode='bilinear', align_corners=False)
+		seg = self.classifier(x)
+		
+		seg = seg.transpose(0,1)
+		x_0, x_1 = seg[:2]
 
-		x_0, x_1 = x_features[self.pos:self.pos+2]
-		(x_gabor_v, x_gabor_h), hist = _gabor_bank(x_1 - x_0)
+		x_diff = x_1 - x_0
+		(x_gabor_v, x_gabor_h), hist = _gabor_bank(x_diff.unsqueeze(0).transpose(0,1))
 
-		x_0_ = torch.max(x_0, x_1)
-		x_features = torch.cat([x_0_.unsqueeze(1), x_features[self.pos+2:]], dim=0).transpose(0,1)
-
-		x_features_up = F.interpolate(x_features, size=input_shape, mode='bilinear', align_corners=False)
-		x_seg = self.classifier(x_features_up)
+		x_max = torch.max(x_0, x_1).unsqueeze(0)
+		x_max = torch.cat([x_max, seg[2:]], 0).transpose(0,1)
 
 		if self.line_clf is not None:
 
 			idx = inputs["angle_range_label"]
-
-			x_gabor_v = x_gabor_v[idx].unsqueeze(0)
-			x_gabor_v = F.interpolate(x_gabor_v, size=input_shape, mode='bilinear', align_corners=False)
-
-			x_gabor_h = x_gabor_h[idx].unsqueeze(0)
-			x_gabor_h = F.interpolate(x_gabor_h, size=input_shape, mode='bilinear', align_corners=False)
+			x_gabor_v = x_gabor_v[idx]
+			x_gabor_h = x_gabor_h[idx]
 			
 			lines_scores_v = self.lines_detect(x_gabor_v, inputs['lines_endpoints_v'].squeeze(0))
 			lines_scores_h = self.lines_detect(x_gabor_h, inputs['lines_endpoints_h'].squeeze(0))
 			lines_scores = torch.cat([lines_scores_v, lines_scores_h])
 
+		result = OrderedDict()
+
 		if self.training:
 
+			result['out'] = OrderedDict()
+
 			if self.line_clf is not None:
-				result["lines_scores"] = lines_scores
+				result['out']["lines_scores"] = lines_scores
 			else:
-				result["seg"] = x_seg
-				result["hist"] = hist
-			
-			return result
+				result['out']["x_diff"] = x_diff
+				result['out']["x_max"] = x_max
+				result['out']["hist"] = hist
 
-		""" else:
+		else:
 
-			(x_gabor_v, x_gabor_h) , hist = _gabor_bank(x_features_up)
-			idx = inputs['angle_range_label'].item()
-			x_gabor_v = x_gabor_v[idx].unsqueeze(0)
-			x_gabor_h = x_gabor_h[idx].unsqueeze(0)
-
-			lines_v = self.lines_detect_test(x_gabor_v, inputs['proposed_lines_v'], inputs['lines_endpoints_v'].squeeze(0))
-			lines_h = self.lines_detect_test(x_gabor_h, inputs['proposed_lines_h'], inputs['lines_endpoints_h'].squeeze(0))
+			result["hist"] = hist
+			lines_v = self.lines_detect_test(lines_scores_v, inputs['proposed_lines_v'])
+			lines_h = self.lines_detect_test(lines_scores_h, inputs['proposed_lines_h'])
 			lines_mask = lines.create_grid(tuple(x_gabor_v.shape[-2:]), lines_v + lines_h)
+			result["seg"] = lines_mask
 
-			result["lines_mask"] = lines_mask
-
-		return result """
+		return result
 
 
 
