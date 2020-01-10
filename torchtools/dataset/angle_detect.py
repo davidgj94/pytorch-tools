@@ -26,7 +26,7 @@ from skimage import measure
 class AngleDetectDataset(data.Dataset):
 
     def __init__(self, root, id_list_path, 
-    	angle_step=7.5, min_angle=-45.0, max_angle=45.0, augmentations=[]):
+    	angle_step=15.0, min_angle=-45.0, max_angle=45.0, augmentations=[]):
     
         self.root = root
         self.id_list = np.loadtxt(id_list_path, dtype=str)
@@ -109,6 +109,33 @@ class AngleDetectDataset(data.Dataset):
         fmt_str = "     Dataset: " + self.__class__.__name__ + "\n"
         fmt_str += "    Root: {}".format(self.root)
         return fmt_str
+
+@register.attach('angle_detect_dataset_v3')
+class AngleDetectDatataset_v3(AngleDetectDataset):
+
+    def __init__(self, **kwargs):
+        super(AngleDetectDatataset_v3, self).__init__(**kwargs)
+        self.id_list = [img_id for img_id in self.id_list.tolist() if "APR" in img_id]
+
+    def __getitem__(self, index):
+
+        data = super(AngleDetectDatataset_v3, self).__getitem__(index)
+        idx = data['angle_range_label']
+        label = data['label']
+
+        label_2c = np.repeat(label[np.newaxis,...], len(self.rot_angles) - 1, 0)
+        weights = (label_2c == 0).astype(np.float32)
+        weights[idx, (label == 1)] = 1.0
+
+        angle_range_label = 255 * np.ones(label.shape, dtype=np.int64)
+        angle_range_label[label == 1] = idx
+
+        data.update(label_2c=label_2c.astype(np.float32), weights=weights, angle_range_label=angle_range_label)
+
+        return data
+
+
+
 
 
 @register.attach('angle_detect_dataset_v2')

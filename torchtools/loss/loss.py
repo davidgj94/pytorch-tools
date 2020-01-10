@@ -165,3 +165,19 @@ def line_detect_loss(inputs, data):
 	pos_weight = 1 / lines_gt.mean()
 	line_loss = F.binary_cross_entropy_with_logits(lines_scores, lines_gt, reduction="mean", pos_weight=pos_weight)
 	return line_loss
+
+@register.attach('line_seg_loss')
+def line_seg_loss(inputs, data):
+
+	line_seg = inputs['line_seg']
+	device = line_seg.device
+	angle_range_label = data['angle_range_label'].to(device)
+	weights = data['weights'].to(device).squeeze(0)
+
+	label_2c = data['label_2c'].to(device).squeeze(0)
+	bin_loss = F.binary_cross_entropy_with_logits(line_seg, label_2c, reduction="none")
+	bin_loss = (bin_loss * weights).sum() / weights.sum()
+
+	angle_range_loss = F.cross_entropy(line_seg.unsqueeze(0), angle_range_label, ignore_index=255)
+
+	return bin_loss + angle_range_loss

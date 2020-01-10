@@ -126,7 +126,7 @@ class DeepLabHead(nn.Sequential):
 
 
 class DeepLabDecoder(nn.Module):
-	def __init__(self, in_planes, out_planes=48):
+	def __init__(self, in_planes, out_planes=48, out_planes_decoder=256):
 		super(DeepLabDecoder, self).__init__()
 		self.reduce_conv = nn.Sequential(
 			nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=1, bias=False),
@@ -134,12 +134,12 @@ class DeepLabDecoder(nn.Module):
 			nn.ReLU(),
 			nn.Dropout(0.5))
 		self.fuse_conv = nn.Sequential(
-			nn.Conv2d(256 + out_planes, 256, kernel_size=3, stride=1, padding=1, bias=False),
-			nn.GroupNorm(32, 256),
+			nn.Conv2d(256 + out_planes, out_planes_decoder, kernel_size=3, stride=1, padding=1, bias=False),
+			nn.GroupNorm(int(out_planes_decoder/8), out_planes_decoder),
 			nn.ReLU(),
 			nn.Dropout(0.1),
-			nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1, bias=False),
-			nn.GroupNorm(32, 256),
+			nn.Conv2d(out_planes_decoder, out_planes_decoder, kernel_size=3, stride=1, padding=1, bias=False),
+			nn.GroupNorm(int(out_planes_decoder/8), out_planes_decoder),
 			nn.ReLU())
 
 	def forward(self, x, x_low):

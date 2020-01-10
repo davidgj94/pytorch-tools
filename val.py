@@ -20,7 +20,7 @@ from skimage.io import imsave, imread
 import os.path
 from argparse import ArgumentParser
 from torchsummary import summary
-from torchtools.save import ResultsSaver, CheckpointSaver
+from torchtools.save import ResultsSaver, SegVisSaver
 from pathlib import Path
 import time
 
@@ -67,7 +67,7 @@ def parse_args():
 
 
 @timeit
-def validate(val_model, val_loader, metric, vis_saver=None):
+def validate(val_model, val_loader, result_saver):
 
 	val_model.eval()   # Set model to evaluate mode
 	np.random.seed(0)
@@ -77,9 +77,10 @@ def validate(val_model, val_loader, metric, vis_saver=None):
 		# Iterate over data.
 		for _iter, data in tqdm(enumerate(val_loader), total=len(val_loader), dynamic_ncols=True):
 			preds = val_model(data)
-			metric(preds, data)
-			if vis_saver is not None:
-				vis_saver(preds, data)
+			result_saver.update_metrics(preds, data)
+			result_saver.save_vis(preds, data)
+		
+	result_saver.save_metrics()
 
 
 if __name__ == "__main__":
@@ -113,14 +114,17 @@ if __name__ == "__main__":
 	else:
 		current_epoch = 0
 
+	result_dir = os.path.join('test', 'results', exper_name)
 	for val_exper_name, val_exper in val_expers.items():
 		print('>> {}'.format(val_exper_name))
 		val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
 		val_model.load_state_dict(model_train.state_dict(), strict=False)
 		########### Aquí definimos la métrica que vamos a utilizar (en un futuro mediante fichero conf) ###########################
 		#metric = RunningScore(num_classes, pred_name="seg", label_name="label")
-		metric = AccuracyAngleRange(pred_name="hist", label_name="angle_range_label")
-		save_vis = None
+		#metric = AccuracyAngleRange(pred_name="hist", label_name="angle_range_label")
+		metric = RunningScore(2, pred_name='line_seg', label_name='label')
+		vis_saver = SegVisSaver(2, pred_name='line_seg', label_name='vis_img')
+		result_saver = ResultsSaver(result_dir, metrics=dict(seg=metric), vis_savers=dict(seg=vis_saver))
 		###########################################################################################################################
-		validate(val_model, val_dataloader, metric, save_vis)
+		validate(val_model, val_dataloader, result_saver)
 		print(">>>> score: {}".format(metric.value()))

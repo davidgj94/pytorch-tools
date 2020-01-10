@@ -82,7 +82,7 @@ class VisSaver():
 			preds = preds.squeeze(0)
 		if len(data.shape) > 3:
 			data = data.squeeze(0)
-		return preds, data.numpy()
+		return preds.numpy(), data.numpy()
 
 
 class SegVisSaver(VisSaver):

@@ -60,13 +60,13 @@ if __name__ == "__main__":
 
 	criterion = get_loss(training_cfg['loss'])
 	
-	optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.0005, momentum=0.9, weight_decay=1e-5)
+	optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.001, momentum=0.9, weight_decay=1e-5)
 
 	exper_name = os.path.basename(args.config).split(".")[0]
 	checkpoint_dir = os.path.join('test', 'checkpoint', exper_name)
 	last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
 	if last_checkpoint_path is not None:
-		print("Checkpoint")
+		print("CHECKPOINT: {}".format(last_checkpoint_path))
 		last_checkpoint = torch.load(last_checkpoint_path)
 		model_train.load_state_dict(last_checkpoint["model_state_dict"], strict=False)
 		current_epoch = last_checkpoint["epoch"]
