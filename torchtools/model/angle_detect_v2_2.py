@@ -26,11 +26,10 @@ def gabor(theta, sigma_x=0.075, sigma_y=0.75, Lambda=0.2, psi=0.0, kernel_size=5
 
 class GaborNet(nn.Module):
 	def __init__(self, angle_step=15.0, min_angle=-45.0, max_angle=45.0, 
-					   kernel_size=35, planes=[32, 16, 8],):
+					   kernel_size=35, in_planes=64, out_planes=128):
 
 		super(GaborNet, self).__init__()
 
-		# angles =  np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
 		angles =  np.deg2rad(np.arange(min_angle, max_angle + 90.0, angle_step))
 		filter_weights = []
 		for angle in (angles + np.pi/2).tolist():
@@ -41,23 +40,14 @@ class GaborNet(nn.Module):
 		self.plot_gabor(filter_weights[:num_angles], angles_v)
 		plt.show() """
 
-		self.depthwise_conv = []
-		self.pointwise_conv = []
-		self.n_layers = len(planes) - 1
-		for idx in np.arange(self.n_layers):
-			in_planes = planes[idx]
-			out_planes = planes[idx + 1]
-			self.depthwise_conv.append(self.gabor_bank(in_planes, filter_weights, kernel_size))
-			self.pointwise_conv.append(nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=1, bias=False))
-		
-		self.depthwise_conv = nn.ModuleList(self.depthwise_conv)
-		self.pointwise_conv = nn.ModuleList(self.pointwise_conv)
-		self.pointwise_conv.apply(init_conv)
+		depthwise_conv = self.gabor_bank(in_planes, filter_weights, kernel_size)
+		n_angles = len(angles) // 2
+		self.depthwise_conv_v = depthwise_conv[:n_angles]
+		self.depthwise_conv_h = depthwise_conv[n_angles:]
+		self.pointwise_conv = nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=1, bias=False)
+		init_conv(self.pointwise_conv)
 		
 		self.relu = nn.ReLU()
-
-		self.clf = nn.Conv2d(planes[-1], 1, kernel_size=1, stride=1, bias=False)
-		init_conv(self.clf)
 
 	def plot_gabor(self, filter_weights, angles_v):
 
@@ -84,55 +74,24 @@ class GaborNet(nn.Module):
 		return nn.ModuleList(_gabor_bank)
 
 	def parameters(self):
-		params = []
-		for _pointwise_conv in self.pointwise_conv:
-			params += list(_pointwise_conv.parameters())
-		params += list(self.clf.parameters())
-		return params
+		return self.pointwise_conv.parameters()
 
-	def forward(self, x, output_shape):
+	def forward(self, x, angle_indices):
 
 		# Por ahora solo batch size de uno
 
-		def separable_conv_0(x, depthwise_conv, pointwise_conv):
-			res = []
-			for _depthwise_conv in depthwise_conv:
-				x_depth = _depthwise_conv(x)
-				x_point = pointwise_conv(x_depth)
-				res.append(x_point)
-			return self.relu(torch.cat(res, 0))
+		def separable_conv(x, idx):
+			x_v = self.pointwise_conv(self.depthwise_conv_v[idx](x))
+			x_h = self.pointwise_conv(self.depthwise_conv_h[idx](x))
+			return self.relu(torch.max(x_v, x_h))
 
-		def separable_conv_1(x, depthwise_conv, pointwise_conv):
-			res = []
-			for _depthwise_conv, _x in zip(depthwise_conv, x):
-				_x = _x.unsqueeze(0)
-				x_depth = _depthwise_conv(_x)
-				x_point = pointwise_conv(x_depth)
-				res.append(x_point)
-			return self.relu(torch.cat(res, 0))
-
-		""" def combine(x):
-			x = x[:-1] + x[1:]
-			n_intervals = x.shape[0] // 2
-			x_v = x[:n_intervals]
-			x_h = x[n_intervals:]
-			return torch.max(x_v, x_h) """
-
-		def combine(x):
-			n_intervals = x.shape[0] // 2
-			x_v = x[:n_intervals]
-			x_h = x[n_intervals:]
-			return torch.max(x_v, x_h)
-
-		x_0 = separable_conv_0(x, self.depthwise_conv[0], self.pointwise_conv[0])
-		x_1 = separable_conv_1(x_0, self.depthwise_conv[1], self.pointwise_conv[1])
-		x_1_up = F.interpolate(x_1, size=output_shape, mode='bilinear', align_corners=False)
-		x_out = self.clf(x_1_up)
-		return combine(x_out)
+		pdb.set_trace()
+		idx0, idx1 = angle_indices
+		return separable_conv(x, idx0) + separable_conv(x, idx1)
 
 	
 
-@register.attach('angle_net_v2')
+@register.attach('angle_net_v2_2')
 class AngleNet(Deeplabv3Plus):
 	def __init__(self, n_classes, pretrained_model, aux=False, out_planes_skip=48,):
 
@@ -143,14 +102,10 @@ class AngleNet(Deeplabv3Plus):
 
 		self.lines_decoder = DeepLabDecoder(256, out_planes=out_planes_skip, out_planes_decoder=64)
 		self.lines_decoder.apply(init_conv)
-		self.gabor_net = GaborNet(planes=[64, 64, 64]) # no inicializar, ya se inicializa solo
+		self.gabor_net = GaborNet(in_planes=64, out_planes=128) # no inicializar, ya se inicializa solo
+		self.lines_clf = nn.Conv2d(128, 1, kernel_size=1, stride=1, bias=False)
+		init_conv(self.lines_clf)
 		self.test_tresh = 0.5
-
-
-	def trainable_parameters(self,):
-		params = list(self.lines_decoder.parameters())
-		params += list(self.gabor_net.parameters())
-		return params
 	
 	def plot_out(self, x_out):
 		for _x_out in x_out:
@@ -159,27 +114,30 @@ class AngleNet(Deeplabv3Plus):
 
 	def forward(self, inputs):
 
+		def compute_seg(x, output_shape, classifier):
+			x = F.interpolate(x, size=output_shape,
+						mode='bilinear', align_corners=False)
+			return classifier(x)
+
+		pdb.set_trace() # Falta comprobar lo de los angulos n_angles
+
 		input_shape = inputs["image"].shape[-2:]
 		features = super(AngleNet, self).forward(inputs, return_intermediate=True)
+
+		seg = compute_seg(features["decoder"], input_shape, self.classifier)
+
 		x_aspp = features['aspp']
 		x_low = features['layer1']
 		x_decoder = self.lines_decoder(x_aspp, x_low)
-		x_out = self.gabor_net(x_decoder, input_shape).squeeze(1)
+		x_gabor = self.gabor_net(x_decoder, inputs['angle_indices'])
+		line_seg = compute_seg(x_gabor, input_shape, self.lines_clf)
 
 		result = OrderedDict()
 
 		if self.training:
 			result['out'] = OrderedDict()
-			result['out']['line_seg'] = x_out
-		else:
-			self.plot_out(x_out)
-			x_out, _ = torch.max(x_out, dim=0)
-			x_out = torch.sigmoid(x_out) > self.test_tresh
-			plt.figure()
-			plt.imshow(x_out.cpu().numpy())
-			plt.show()
-			pdb.set_trace()
-			#
+			result['out']['line_seg'] = line_seg
+			result['out']['seg'] = seg
 
 		return result
 

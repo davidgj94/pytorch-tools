@@ -171,13 +171,53 @@ def line_seg_loss(inputs, data):
 
 	line_seg = inputs['line_seg']
 	device = line_seg.device
-	angle_range_label = data['angle_range_label'].to(device)
+	# angle_range_label = data['angle_range_label'].to(device)
 	weights = data['weights'].to(device).squeeze(0)
 
 	label_2c = data['label_2c'].to(device).squeeze(0)
-	bin_loss = F.binary_cross_entropy_with_logits(line_seg, label_2c, reduction="none")
+	pos_weight = 1 / label_2c.mean()
+	bin_loss = F.binary_cross_entropy_with_logits(line_seg, label_2c, pos_weight=pos_weight, reduction="none")
 	bin_loss = (bin_loss * weights).sum() / weights.sum()
 
-	angle_range_loss = F.cross_entropy(line_seg.unsqueeze(0), angle_range_label, ignore_index=255)
+	""" angle_range_loss = F.cross_entropy(line_seg.unsqueeze(0), angle_range_label, ignore_index=255)
 
-	return bin_loss + angle_range_loss
+	return bin_loss + angle_range_loss """
+	return bin_loss
+
+@register.attach('line_seg_loss_v2')
+def line_seg_loss_v2(inputs, data):
+
+	def _bin_loss(line_seg, bin_label, weights):
+		n_angles = bin_label.shape[1]
+		weights = weights.repeat(n_angles,1,1)
+		loss = []
+		for _line_seg, _bin_label in zip(line_seg, bin_label):
+			_loss = F.binary_cross_entropy_with_logits(_line_seg, _bin_label, reduction="none")
+			loss.append((_loss * weights).sum() / weights.sum())
+		return sum(loss)
+
+	def _softmax_loss(line_seg, softmax_label):
+		loss = []
+		for _line_seg, _softmax_label in zip(line_seg, softmax_label):
+			loss.append(F.cross_entropy(_line_seg.unsqueeze(0), _softmax_label.unsqueeze(0), ignore_index=255))
+		return sum(loss)
+
+	line_seg = inputs['line_seg']
+	device = line_seg.device
+
+	if 'softmax_label' in data:
+
+		softmax_label = data['softmax_label'].to(device).squeeze(0)
+		bin_label = data['bin_label'].to(device).squeeze(0)
+		weights = data['weights'].to(device).squeeze(0)
+
+		bin_loss = _bin_loss(line_seg, bin_label, weights)
+		softmax_loss = _softmax_loss(line_seg, softmax_label)
+
+		return (bin_loss + softmax_loss) / 2
+	
+	else:
+
+		return 0.0
+
+
