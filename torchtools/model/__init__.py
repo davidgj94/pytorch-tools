@@ -1,5 +1,6 @@
 from .register import register; register.load_modules()
 from torchtools.model import deeplab
+import pdb
 
 output_stride_params = { 16: dict(replace_stride_with_dilation=[False, False, True], rates=[6, 12, 18]),
 						 8:  dict(replace_stride_with_dilation=[False, True, True],  rates=[12, 24, 36]),
@@ -15,8 +16,10 @@ def get_model(n_classes, cfg, aux=False):
 	kw_backbone_args = dict(output_stride_params[cfg['stride']])
 	kw_backbone_args.update(return_layers=return_layers)
 	pretrained_model = deeplab.load_pretrained_model(kw_backbone_args)
+	model_params = cfg.get('params', {})
+	pdb.set_trace()
 	model = register.get(cfg['name'])(n_classes, 
 									  pretrained_model,
-									  aux=aux)
+									  aux=aux, **model_params)
 	return model
 

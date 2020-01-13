@@ -22,7 +22,6 @@ import pickle
 from pathlib import Path
 from skimage import measure
 
-@register.attach('angle_detect_dataset')
 class AngleDetectDataset(data.Dataset):
 
 	def __init__(self, root, id_list_path, 
@@ -62,19 +61,15 @@ class AngleDetectDataset(data.Dataset):
 		image, _label = self.augmentations(img, np.dstack((label, label_test)))
 		vis_image = image.copy()
 		label, label_test = np.dsplit(_label, 2)
-		label = np.squeeze(label)
-		label_test = np.squeeze(label_test)
+		label = np.squeeze(label).astype(np.int64)
+		label_test = np.squeeze(label_test).astype(np.int64)
 
-		mask = (label != 255)
+		not_ignore = (label != 255)
 		label_3c = label.copy()
-		label_3c[label == 0] = 1
-		label_3c[mask] -= 1
-		label_3c = label_3c.astype(np.int64)
-		label_2c = (label == 1).astype(np.float32)
-		weights = np.logical_or(label == 1, label == 0).astype(np.float32)
+		label_3c[not_ignore] = np.clip(label_3c[not_ignore] - 1, a_min=0, a_max=None)
 
-		label = label.astype(np.int64)
-		label_test = label_test.astype(np.int64)
+		label_2c = (label == 1).astype(np.float32)
+		weights = (label_3c == 0).astype(np.float32)
 
 		image = TF.to_tensor(image)
 		image = TF.normalize(image, self.mean, self.var)
@@ -83,7 +78,6 @@ class AngleDetectDataset(data.Dataset):
 		angle_range_label = 255
 		margin_label = np.ones(len(self.rot_angles) - 2, dtype=np.float32)
 		if np.any(label_test == 1):
-
 			_, _rot_angle_v = lines.extract_lines((label_test == 1), self.angle_range_v)
 			_rot_angle = np.rad2deg(_rot_angle_v)
 			angle_dist = np.abs(self.rot_angles - _rot_angle)
@@ -94,11 +88,10 @@ class AngleDetectDataset(data.Dataset):
 			image=image, 
 			vis_image=vis_image, 
 			angle_range_label=angle_range_label,
-			margin_label=margin_label, 
+			margin_label=margin_label,
 			label_test=label_test, 
-			label=label,
+			label=label_3c,
 			label_2c=label_2c,
-			label_3c=label_3c,
 			weights=weights
 			)
 

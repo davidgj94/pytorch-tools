@@ -100,37 +100,6 @@ def cross_entropy(inputs, data):
 	return F.cross_entropy(seg, targets, ignore_index=255)
 
 
-""" @register.attach('dice_loss')
-def dice_loss(inputs, data):
-
-	pred = inputs['out']
-	pred_coop = inputs['out_coop']
-	device = pred.device
-	label = data['label'].to(device)
-
-	label_s = label.clone()
-	label_s[label != 255] = torch.clamp(label_s[label != 255] - 1, min=0)
-
-	label_dice = (label == 1).float()
-	mask = (label == 0).float() + (label == 1).float()
-
-	def _dice_loss(pred, target, mask):
-		numerator = 2 * torch.sum(pred * target * mask)
-		denominator = torch.sum((pred + target) * mask)
-		return 1.0 - (numerator + 1.0) / (denominator + 1.0)
-
-	def _cross_entropy(pred, target):
-
-		probs_4class = F.softmax(pred, dim=1).transpose(0,1)
-		probs_3class = torch.stack([(probs_4class[0] + probs_4class[1]), 
-							 probs_4class[2], 
-							 probs_4class[3]]).transpose(0,1)
-		logprobs_3class = torch.log(probs_3class)
-		return F.nll_loss(logprobs_3class, targets_3classes)
-
-	return _dice_loss(pred_coop, label_dice, mask) + _cross_entropy(pred, label_s) """
-
-
 @register.attach('margin_ranking')
 def margin_ranking_loss(inputs, data, margin=0.1):
 
@@ -154,37 +123,21 @@ def margin_ranking_loss(inputs, data, margin=0.1):
 	return sum(margin_loss) / len(margin_loss)
 
 
-@register.attach('line_detect')
-def line_detect_loss(inputs, data):
-
-	#Usar con batch-size de 1 y entrenando con imágenes de APRON
-
-	lines_scores = inputs["lines_scores"]
-	device = lines_scores.device
-	lines_gt = data['lines_gt'].to(device).squeeze()
-	pos_weight = 1 / lines_gt.mean()
-	line_loss = F.binary_cross_entropy_with_logits(lines_scores, lines_gt, reduction="mean", pos_weight=pos_weight)
-	return line_loss
-
-@register.attach('line_seg_loss')
-def line_seg_loss(inputs, data):
+@register.attach('bin_loss')
+def binary_loss(inputs, data):
 
 	line_seg = inputs['line_seg']
 	device = line_seg.device
-	# angle_range_label = data['angle_range_label'].to(device)
 	weights = data['weights'].to(device).squeeze(0)
 
 	label_2c = data['label_2c'].to(device).squeeze(0)
-	pos_weight = 1 / label_2c.mean()
-	bin_loss = F.binary_cross_entropy_with_logits(line_seg, label_2c, pos_weight=pos_weight, reduction="none")
+	bin_loss = F.binary_cross_entropy_with_logits(line_seg, label_2c, reduction="none")
 	bin_loss = (bin_loss * weights).sum() / weights.sum()
 
-	""" angle_range_loss = F.cross_entropy(line_seg.unsqueeze(0), angle_range_label, ignore_index=255)
-
-	return bin_loss + angle_range_loss """
 	return bin_loss
 
-@register.attach('line_seg_loss_v2')
+
+@register.attach('hist_loss')
 def line_seg_loss_v2(inputs, data):
 
 	def _bin_loss(line_seg, bin_label, weights):
