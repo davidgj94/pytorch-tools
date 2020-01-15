@@ -14,7 +14,6 @@ def set_bn_eval(m):
 	if isinstance(m, nn.modules.batchnorm._BatchNorm):
 		m.eval()
 
-
 def train(train_model, train_dataloader, criterion, optimizer, training_cfg):
 
 	train_model.train()

@@ -11,8 +11,8 @@ import copy
 from torchtools.utils import check_gradient
 from sklearn.cluster import MeanShift
 from .register import register
-from .gabor import GaborNet_v1, GaborClassfier_v2, GaborClassfier_v3, GaborNet_v4, GaborDecoder
-from .gate import GatedGaborConv2d
+from .gabor import GaborNet_v4, GaborDecoder, GatedGaborConv2d
+from .gabor_old import GaborNet_v1, GaborClassfier_v2, GaborClassfier_v3
 
 def compute_seg(x, output_shape, classifier):
 	x = F.interpolate(x, size=output_shape, mode='bilinear', align_corners=False)
@@ -138,7 +138,7 @@ class AngleNet_v5(Deeplabv3Plus):
 									aux=False, 
 									out_planes_skip=out_planes_skip)
 
-		self.lines_decoder = GaborDecoder(256, out_planes_low=out_planes_skip, out_planes_decoder=128)
+		self.lines_decoder = GaborDecoder(256, out_planes_low=128, out_planes_decoder=128)
 		self.lines_clf = nn.Conv2d(128, 1, kernel_size=1, stride=1, bias=False)
 		init_conv(self.lines_clf)
 		self.test_tresh = 0.5
@@ -175,7 +175,7 @@ class AngleNet_v5(Deeplabv3Plus):
 class AngleNet_v4(Deeplabv3Plus):
 	def __init__(self, n_classes, pretrained_model, aux=False, out_planes_skip=48,):
 
-		super(AngleNet_v4, self).__init__(n_classes - 1,
+		super(AngleNet_v4, self).__init__(n_classes,
 									pretrained_model, 
 									aux=False, 
 									out_planes_skip=out_planes_skip)

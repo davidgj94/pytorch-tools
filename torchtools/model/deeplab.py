@@ -36,8 +36,14 @@ class Deeplabv3(nn.Module):
 	def get_device(self,):
 		return self.classifier.weight.device
 
-	def trainable_parameters(self,):
-		return self.parameters()
+	def trainable_parameters(self, debug=False):
+		_params = []
+		for name, param in self.named_parameters():
+			if param.requires_grad:
+				if debug:
+					print(name)
+				_params.append(param)
+		return iter(_params)
 	
 	def forward(self, inputs, return_intermediate=False):
 

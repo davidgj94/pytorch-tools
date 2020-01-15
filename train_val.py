@@ -59,11 +59,8 @@ if __name__ == "__main__":
 	train_dataloader = get_dataloader(id_list_path, training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
 
 	criterion = get_loss(training_cfg['loss'])
-	_trainable_parameters = list(model_train.trainable_parameters())
-	for name, param in model_train.named_parameters():
-		print(name)
-	pdb.set_trace()
-	optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.0005, momentum=0.9, weight_decay=1e-5)
+
+	optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.0001, momentum=0.9, weight_decay=1e-5)
 
 	exper_name = os.path.basename(args.config).split(".")[0]
 	checkpoint_dir = os.path.join('test', 'checkpoint', exper_name)

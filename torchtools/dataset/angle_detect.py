@@ -84,6 +84,9 @@ class AngleDetectDataset(data.Dataset):
 			angle_dist = np.abs(self.rot_angles - _rot_angle)
 			margin_label = np.sign(angle_dist[1:-1] - angle_dist[:-2]).astype(np.float32)
 			angle_range_label = np.argsort(angle_dist)[:2].min()
+			""" print(_rot_angle)
+			plt.figure()
+			plt.imshow((label == 1)) """
 
 		return dict(image_id=image_id, 
 			image=image, 
