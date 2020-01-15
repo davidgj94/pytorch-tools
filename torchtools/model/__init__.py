@@ -17,7 +17,6 @@ def get_model(n_classes, cfg, aux=False):
 	kw_backbone_args.update(return_layers=return_layers)
 	pretrained_model = deeplab.load_pretrained_model(kw_backbone_args)
 	model_params = cfg.get('params', {})
-	pdb.set_trace()
 	model = register.get(cfg['name'])(n_classes, 
 									  pretrained_model,
 									  aux=aux, **model_params)

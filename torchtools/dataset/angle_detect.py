@@ -22,6 +22,7 @@ import pickle
 from pathlib import Path
 from skimage import measure
 
+@register.attach('angle_detect_dataset')
 class AngleDetectDataset(data.Dataset):
 
 	def __init__(self, root, id_list_path, 
@@ -83,14 +84,14 @@ class AngleDetectDataset(data.Dataset):
 			angle_dist = np.abs(self.rot_angles - _rot_angle)
 			margin_label = np.sign(angle_dist[1:-1] - angle_dist[:-2]).astype(np.float32)
 			angle_range_label = np.argsort(angle_dist)[:2].min()
-  
+
 		return dict(image_id=image_id, 
 			image=image, 
 			vis_image=vis_image, 
 			angle_range_label=angle_range_label,
 			margin_label=margin_label,
 			label_test=label_test, 
-			label=label_3c,
+			label=label,
 			label_2c=label_2c,
 			weights=weights
 			)
@@ -102,143 +103,6 @@ class AngleDetectDataset(data.Dataset):
 		fmt_str = "     Dataset: " + self.__class__.__name__ + "\n"
 		fmt_str += "    Root: {}".format(self.root)
 		return fmt_str
-
-@register.attach('angle_detect_dataset_v4')
-class AngleDetectDatataset_v4(AngleDetectDataset):
-	
-	def __init__(self, **kwargs):
-		super(AngleDetectDatataset_v4, self).__init__(**kwargs)
-		self.rot_angles = self.rot_angles[:-1]
-
-	def debug(self, label):
-		for i in np.arange(len(self.rot_angles)):
-			plt.figure()
-			plt.imshow(label[i])
-	
-	def __getitem__(self, index):
-
-		image_id, img, label, label_test = self._load_data(index)
-
-		image, _label = self.augmentations(img, np.dstack((label, label_test)))
-		label, label_test = np.dsplit(_label, 2)
-		label = np.squeeze(label).astype(np.int64)
-		label_test = np.squeeze(label_test).astype(np.int64)
-		vis_image = image.copy()
-		image = TF.to_tensor(image)
-		image = TF.normalize(image, self.mean, self.var)
-		image = image.numpy()
-
-		not_ignore = (label != 255)
-		label[not_ignore] = np.clip(label[not_ignore] - 1, a_min=0, a_max=None)
-		weights = not_ignore.astype(np.float32)
-
-		if not np.any(label_test == 1):
-			return dict(image_id=image_id, 
-			image=image, 
-			vis_image=vis_image,
-			label_test=label_test, 
-			label=label,
-			)
-
-		###############################################################################
-		
-		lines_v, _rot_angle = lines.extract_lines((label_test == 1), self.angle_range_v)
-		lines_h, _ = lines.extract_lines((label_test == 1), self.angle_range_h)
-
-		lines_v_mask = lines.create_grid(label.shape, lines_v, width=16)
-		lines_h_mask = lines.create_grid(label.shape, lines_h, width=16)
-
-		""" plt.figure()
-		plt.imshow(lines_v_mask)
-		plt.figure()
-		plt.imshow(lines_h_mask)
-		plt.show() """
-
-		_rot_angle = np.rad2deg(_rot_angle)
-		angle_dist = np.abs(self.rot_angles - _rot_angle)
-
-		###############################################################################
-
-		indices = np.where(angle_dist < 0.75 * self.angle_step)[0]
-
-		bin_label_v = np.zeros((len(self.rot_angles),) + label.shape, dtype=np.float32)
-		bin_label_v[indices] = lines_v_mask.astype(np.float32)
-
-		bin_label_h = np.zeros((len(self.rot_angles),) + label.shape, dtype=np.float32)
-		bin_label_h[indices] = lines_h_mask.astype(np.float32)
-
-		bin_label = np.stack((bin_label_v, bin_label_h), 0)
-
-		###############################################################################
-
-		idx = np.argmin(angle_dist)
-
-		softmax_label_v = 255 * np.ones(label.shape, dtype=np.int64)
-		softmax_label_v[lines_v_mask.astype(bool)] = idx
-
-		softmax_label_h = 255 * np.ones(label.shape, dtype=np.int64)
-		softmax_label_h[lines_h_mask.astype(bool)] = idx
-
-		softmax_label = np.stack((softmax_label_v, softmax_label_h), 0)
-
-		###############################################################################
-		
-		return dict(image_id=image_id, 
-			image=image, 
-			vis_image=vis_image,
-			label_test=label_test, 
-			label=label,
-			bin_label=bin_label,
-			softmax_label=softmax_label,
-			weights=weights
-			)
-
-
-@register.attach('angle_detect_dataset_v3')
-class AngleDetectDatataset_v3(AngleDetectDataset):
-
-	def __init__(self, **kwargs):
-		super(AngleDetectDatataset_v3, self).__init__(**kwargs)
-		self.id_list = [img_id for img_id in self.id_list.tolist() if "APR" in img_id]
-
-	def __getitem__(self, index):
-
-		data = super(AngleDetectDatataset_v3, self).__getitem__(index)
-		idx = data['angle_range_label']
-		label = data['label']
-
-		label_2c = np.repeat(label[np.newaxis,...], len(self.rot_angles) - 1, 0)
-		weights = (label_2c == 0).astype(np.float32)
-		weights[idx, (label == 1)] = 1.0
-
-		angle_range_label = 255 * np.ones(label.shape, dtype=np.int64)
-		angle_range_label[label == 1] = idx
-
-		data.update(label_2c=label_2c.astype(np.float32), weights=weights, angle_range_label=angle_range_label)
-
-		return data
-
-@register.attach('angle_detect_dataset_v3_2')
-class AngleDetectDatataset_v3_2(AngleDetectDataset):
-
-	def __init__(self, **kwargs):
-		super(AngleDetectDatataset_v3_2, self).__init__(**kwargs)
-		# self.id_list = [img_id for img_id in self.id_list.tolist() if "APR" in img_id]
-
-	def __getitem__(self, index):
-
-		data = super(AngleDetectDatataset_v3_2, self).__getitem__(index)
-		idx = data['angle_range_label']
-		label = data['label']
-
-		label_2c = (label == 1).astype(np.float32)
-		not_ignore = (label != 255)
-		weights = not_ignore.astype(np.float32)
-		label[not_ignore] = np.clip(label[not_ignore] - 1, a_min=0, a_max=None)
-
-		data.update(label_2c=label_2c, weights=weights, angle_range_label=angle_range_label)
-
-		return data
 
 
 @register.attach('angle_detect_dataset_v2')

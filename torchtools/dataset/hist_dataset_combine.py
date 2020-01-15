@@ -59,12 +59,7 @@ class HistDataset(AngleDetectDataset):
 		plt.imshow(lines_h_mask)
 		plt.show() """
 
-		""" _rot_angle = np.rad2deg(_rot_angle)
-		angle_dist = np.abs(self.rot_angles - _rot_angle) """
-
 		###############################################################################
-
-		# indices = np.where(angle_dist < 0.75 * self.angle_step)[0]
 
 		sz = (len(self.rot_angles),) + label.shape
 

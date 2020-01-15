@@ -132,21 +132,19 @@ def binary_loss(inputs, data):
 
 	label_2c = data['label_2c'].to(device).squeeze(0)
 	bin_loss = F.binary_cross_entropy_with_logits(line_seg, label_2c, reduction="none")
-	bin_loss = (bin_loss * weights).sum() / weights.sum()
+	bin_loss = (bin_loss * weights).sum() / (weights.sum() + 1.0)
 
 	return bin_loss
 
 
 @register.attach('hist_loss')
-def line_seg_loss_v2(inputs, data):
+def hist_loss(inputs, data):
 
 	def _bin_loss(line_seg, bin_label, weights):
-		n_angles = bin_label.shape[1]
-		weights = weights.repeat(n_angles,1,1)
 		loss = []
 		for _line_seg, _bin_label in zip(line_seg, bin_label):
 			_loss = F.binary_cross_entropy_with_logits(_line_seg, _bin_label, reduction="none")
-			loss.append((_loss * weights).sum() / weights.sum())
+			loss.append((_loss * weights).sum() / (weights.sum() + 1.0))
 		return sum(loss)
 
 	def _softmax_loss(line_seg, softmax_label):

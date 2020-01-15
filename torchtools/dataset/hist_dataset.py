@@ -27,10 +27,11 @@ from .angle_detect import AngleDetectDataset
 class HistDataset(AngleDetectDataset):
 	
 	def __init__(self, **kwargs):
+		self.combine =  kwargs.pop("combine", False)
 		super(HistDataset, self).__init__(**kwargs)
 
 	def debug(self, label):
-		for i in np.arange(len(self.rot_angles)):
+		for i in np.arange(label.shape[0]):
 			plt.figure()
 			plt.imshow(label[i])
 	
@@ -50,8 +51,8 @@ class HistDataset(AngleDetectDataset):
 		lines_v, _rot_angle = lines.extract_lines((label_test == 1), self.angle_range_v)
 		lines_h, _ = lines.extract_lines((label_test == 1), self.angle_range_h)
 
-		lines_v_mask = lines.create_grid(label.shape, lines_v, width=16)
-		lines_h_mask = lines.create_grid(label.shape, lines_h, width=16)
+		lines_v_mask = lines.create_grid(label.shape, lines_v, width=16) * (label == 0).astype(int)
+		lines_h_mask = lines.create_grid(label.shape, lines_h, width=16) * (label == 0).astype(int)
 
 		""" plt.figure()
 		plt.imshow(lines_v_mask)
@@ -64,20 +65,30 @@ class HistDataset(AngleDetectDataset):
 
 		###############################################################################
 
-		indices = np.where(angle_dist < 0.75 * self.angle_step)[0]
+		if self.combine:
+			idx = angle_range_label
+			n_angles = len(self.rot_angles) - 1
+		else:
+			idx = np.argmin(angle_dist)
+			n_angles = len(self.rot_angles)
 
-		sz = (len(self.rot_angles),) + label.shape
+		sz = (n_angles,) + label.shape
 
 		bin_label_v = np.zeros(sz, dtype=np.float32)
-		bin_label_v[indices] = lines_v_mask.astype(np.float32)
+		bin_label_v[idx] = lines_v_mask.astype(np.float32)
 
 		bin_label_h = np.zeros(sz, dtype=np.float32)
-		bin_label_h[indices] = lines_h_mask.astype(np.float32)
+		bin_label_h[idx] = lines_h_mask.astype(np.float32)
 
 		bin_label = np.stack((bin_label_v, bin_label_h), 0)
+		
+		lines_v_mask_inv = (lines_v_mask != 1).astype(np.float32)
+		lines_h_mask_inv = (lines_h_mask != 1).astype(np.float32)
+		weights_v = np.repeat(weights[np.newaxis,...] * lines_v_mask_inv, n_angles, 0)
+		weights_v[idx] = weights
+		weights_h = np.repeat(weights[np.newaxis,...] * lines_h_mask_inv, n_angles, 0)
+		weights_h[idx] = weights
 
-		weights_v = np.repeat(weights[np.newaxis,...], len(self.rot_angles), 0)
-		weights_h = np.repeat(weights[np.newaxis,...], len(self.rot_angles), 0)
 		weights = np.stack((weights_v, weights_h), 0)
 
 		###############################################################################

@@ -43,7 +43,7 @@ class GaborNet_v1(nn.Module):
 
 		super(GaborNet_v1, self).__init__()
 
-		angles =  np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
+		angles = np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
 		filter_weights = []
 		for angle in (angles + np.pi/2).tolist():
 			filter_weights.append(gabor(angle, kernel_size=kernel_size) / kernel_size)
@@ -127,8 +127,8 @@ class GaborNet_v1(nn.Module):
 		x_0 = separable_conv_0(x, self.depthwise_conv[0], self.pointwise_conv[0])
 		x_1 = separable_conv_1(x_0, self.depthwise_conv[1], self.pointwise_conv[1])
 		x_1_up = F.interpolate(x_1, size=output_shape, mode='bilinear', align_corners=False)
-		x_out = self.clf(x_1_up)
-		pdb.set_trace()
+		x_out = self.clf(x_1_up).squeeze(1)
+
 		return split(x_out, self.combine)
 
 
@@ -194,7 +194,7 @@ class GaborClassfier_v3(nn.Module):
 
 		super(GaborClassfier_v3, self).__init__()
 
-		angles = angles = np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
+		angles = np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
 		self.gabor_bank = nn.Conv2d(
 			1, len(angles), kernel_size=kernel_size, stride=1, bias=False)
 		filter_weights = []
@@ -223,8 +223,8 @@ class GaborClassfier_v3(nn.Module):
 		return self.clf.parameters()
 
 	def forward(self, x, output_shape):
-		x = self.gabor_bank(self.clf(x)).squeeze(0)
-		x_up = F.interpolate(x, size=output_shape, mode='bilinear', align_corners=False)
+		x = self.gabor_bank(self.clf(x)).squeeze(0).unsqueeze(1)
+		x_up = F.interpolate(x, size=output_shape, mode='bilinear', align_corners=False).squeeze(1)
 		return split(x_up, self.combine)
 
 
@@ -234,7 +234,7 @@ class GaborNet_v4(nn.Module):
 
 		super(GaborNet_v4, self).__init__()
 
-		angles =  np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
+		angles = np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
 		filter_weights = []
 		for angle in (angles + np.pi/2).tolist():
 			filter_weights.append(gabor(angle, kernel_size=kernel_size) / kernel_size)
@@ -289,5 +289,84 @@ class GaborNet_v4(nn.Module):
 			x_h = self.pointwise_conv(self.depthwise_conv_h[idx](x))
 			return self.relu(torch.max(x_v, x_h))
 
-		pdb.set_trace()
+		if angle_idx == 255:
+			angle_idx = 0 # pongo ese mismo, porque luego no se tiene en cuenta en la loss
+
 		return separable_conv(x, angle_idx) + separable_conv(x, angle_idx+1)
+
+
+class GaborDecoder(nn.Module):
+	def __init__(self, in_planes, out_planes_low=48, out_planes_decoder=128, angle_step=15.0, min_angle=-45.0, max_angle=45.0, 
+				kernel_size=35,):
+		super(GaborDecoder, self).__init__()
+
+		angles = np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
+		filter_weights = []
+		for angle in (angles + np.pi/2).tolist():
+			filter_weights.append(gabor(angle, kernel_size=kernel_size) / kernel_size)
+
+		depthwise_conv = self.gabor_bank(in_planes, filter_weights, kernel_size)
+		n_angles = (len(angles) - 1) // 2 + 1
+		self.depthwise_conv_v = depthwise_conv[:n_angles]
+		self.depthwise_conv_h = depthwise_conv[n_angles-1:]
+		self.pointwise_conv = nn.Conv2d(in_planes, out_planes_low, kernel_size=1, stride=1, bias=False)
+		init_conv(self.pointwise_conv)
+		
+		self.relu = nn.ReLU()
+
+		self.fuse_conv = nn.Sequential(
+			nn.Conv2d(256 + 2 * out_planes_low, out_planes_decoder, kernel_size=3, stride=1, padding=1, bias=False),
+			nn.GroupNorm(int(out_planes_decoder/8), out_planes_decoder),
+			nn.ReLU(),
+			nn.Dropout(0.1),
+			nn.Conv2d(out_planes_decoder, out_planes_decoder, kernel_size=3, stride=1, padding=1, bias=False),
+			nn.GroupNorm(int(out_planes_decoder/8), out_planes_decoder),
+			nn.ReLU())
+		self.fuse_conv.apply(init_conv)
+	
+	def parameters(self,):
+		params = list(self.pointwise_conv.parameters())
+		params += list(self.fuse_conv.parameters())
+		return iter(params)
+
+	def gabor_bank(self, in_planes, filter_weights, kernel_size):
+
+		_gabor_bank = []
+		for _filter_weights in filter_weights:
+			conv_layer = nn.Conv2d(in_planes, in_planes, 
+									kernel_size=kernel_size, 
+									stride=1, 
+									bias=False, 
+									groups=in_planes,
+									padding=int((kernel_size  - 1) // 2))
+			_filter_weights = np.repeat(_filter_weights[np.newaxis, ...], in_planes, 0)
+			_filter_weights = torch.FloatTensor(_filter_weights).view_as(conv_layer.weight.data)
+			conv_layer.weight =  nn.Parameter(_filter_weights, requires_grad=True)
+			_gabor_bank.append(conv_layer)
+		return nn.ModuleList(_gabor_bank)
+
+	def reduce_conv(self, x, idx):
+
+		def gabor_branch(depthwise_conv):
+			x_0 = self.pointwise_conv(depthwise_conv[idx](x))
+			x_1 = self.pointwise_conv(depthwise_conv[idx+1](x))
+			return self.relu(x_0) + self.relu(x_1)
+
+		x_v = gabor_branch(self.depthwise_conv_v)
+		x_h = gabor_branch(self.depthwise_conv_h)
+		return torch.cat([x_v, x_h], dim=1)
+
+
+	def forward(self, x, x_low, angle_idx):
+
+		if angle_idx == 255:
+			angle_idx = 0 
+
+		low_size = x_low.shape[-2:]
+		high_size = x.shape[-2:]
+		x_low = self.reduce_conv(x_low, angle_idx)
+		if low_size > high_size:
+			x = F.interpolate(x, size=low_size, mode='bilinear', align_corners=False)
+		x = torch.cat([x_low, x], dim=1)
+		x = self.fuse_conv(x)
+		return x
