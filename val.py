@@ -122,9 +122,11 @@ if __name__ == "__main__":
 		########### Aquí definimos la métrica que vamos a utilizar (en un futuro mediante fichero conf) ###########################
 		#metric = RunningScore(num_classes, pred_name="seg", label_name="label")
 		#metric = AccuracyAngleRange(pred_name="hist", label_name="angle_range_label")
-		metric = RunningScore(2, pred_name='line_seg', label_name='label')
-		vis_saver = SegVisSaver(2, pred_name='line_seg', label_name='vis_img')
-		result_saver = ResultsSaver(result_dir, metrics=dict(seg=metric), vis_savers=dict(seg=vis_saver))
+		metric = RunningScore(4, pred_name='seg_mask', label_name='label')
+		metric_v2 = RunningScore(4, pred_name='seg_mask_v2', label_name='label')
+		vis_saver_multi = SegVisSaver(4, pred_name='seg_mask', label_name='vis_image')
+		vis_saver_bi = SegVisSaver(4, pred_name='seg_mask_v2', label_name='vis_image')
+		result_saver = ResultsSaver(result_dir, metrics=dict(seg=metric, seg_v2=metric_v2), vis_savers=dict(seg=vis_saver_multi, lines_vis=vis_saver_bi))
 		###########################################################################################################################
 		validate(val_model, val_dataloader, result_saver)
 		print(">>>> score: {}".format(metric.value()))

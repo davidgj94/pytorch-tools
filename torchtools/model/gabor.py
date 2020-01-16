@@ -139,8 +139,9 @@ class GaborDecoder(nn.Module):
 
 class GatedGabor(nn.Module):
 	def __init__(self, in_channels, kernel_size=35,):
-		
-		self.depthwise_conv_v, self.depthwise_conv_h = gabor_bank(kernel_size=kernel_size,
+		super(GatedGabor, self).__init__()
+
+		self.gabor_bank_v, self.gabor_bank_h = gabor_bank(kernel_size=kernel_size,
 																  in_planes=in_channels)
 
 		self._gate_conv = nn.Sequential(

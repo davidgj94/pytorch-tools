@@ -60,7 +60,7 @@ if __name__ == "__main__":
 
 	criterion = get_loss(training_cfg['loss'])
 
-	optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.0001, momentum=0.9, weight_decay=1e-5)
+	optimizer = optim.SGD(model_train.trainable_parameters(), lr=0.00025, momentum=0.9, weight_decay=1e-5)
 
 	exper_name = os.path.basename(args.config).split(".")[0]
 	checkpoint_dir = os.path.join('test', 'checkpoint', exper_name)

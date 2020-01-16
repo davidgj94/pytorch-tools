@@ -43,12 +43,10 @@ class RunningScore(object):
         return hist
 
     def __call__(self, preds, data):
-        label_preds = preds[self.pred_name]
-        label_trues = data[self.label_name]
+        label_preds = preds[self.pred_name].squeeze().unsqueeze(0)
+        label_trues = data[self.label_name].squeeze().unsqueeze(0)
         for lt, lp in zip(label_trues, label_preds):
-            lt = lt.cpu().numpy().squeeze()
-            lp = lp.cpu().numpy().squeeze()
-            self.confusion_matrix += self._fast_hist(lt.flatten(), lp.flatten(), self.n_classes)
+            self.confusion_matrix += self._fast_hist(lt.numpy().flatten(), lp.numpy().flatten(), self.n_classes)
 
     def value(self):
         hist = self.confusion_matrix
