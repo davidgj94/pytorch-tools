@@ -91,11 +91,15 @@ if __name__ == "__main__":
 	device = torch.device("cuda:0" if torch.cuda.is_available() and not args.use_cpu else "cpu")
 
 	model_train = get_model(num_classes, training_cfg["model"], False).to(device)
+	model_train.grids_v = model_train.grids_v.to(device)
+	model_train.grids_h = model_train.grids_h.to(device)
 
 	id_list_path = os.path.join('test', 'list', '{}.txt').format('train' if args.train else 'val')
 	val_expers = {}
 	for _val_exper in val_cfg['val_expers']:
 		model_val = get_model(num_classes, _val_exper["model"]).to(device)
+		model_val.grids_v = model_train.grids_v.to(device)
+		model_val.grids_h = model_train.grids_h.to(device)
 		val_dataloader = get_dataloader(id_list_path, _val_exper['dataset'], val_cfg['batch_size'], shuffle=False)
 		val_expers[_val_exper['name']] = dict(model_val=model_val, val_dataloader=val_dataloader)
 

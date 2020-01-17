@@ -155,6 +155,21 @@ class OrientedNet(Deeplabv3Plus):
 			result["out"]["seg_v"] = seg_v
 			result["out"]["seg_h"] = seg_h
 			result["out"]["seg"] = seg
+		else:
+			seg_v = torch.sigmoid(seg_v).squeeze().cpu().numpy()
+			seg_h = torch.sigmoid(seg_h).squeeze().cpu().numpy()
+			seg = torch.sigmoid(seg).squeeze().cpu().numpy()
+
+			plt.figure()
+			plt.imshow(seg)
+			plt.title("Seg")
+			plt.figure()
+			plt.imshow(seg_v)
+			plt.title("Seg V")
+			plt.figure()
+			plt.imshow(seg_h)
+			plt.title("Seg H")
+			plt.show()
 		return result
 
 
