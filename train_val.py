@@ -56,12 +56,13 @@ if __name__ == "__main__":
 
 	id_list_path = os.path.join('test', 'list', 'train.txt')
 	model_train = get_model(num_classes, training_cfg["model"], training_cfg.get('aux_loss', False)).to(device)
+	model_train.grids_v = model_train.grids_v.to(device)
+	model_train.grids_h = model_train.grids_h.to(device)
 	train_dataloader = get_dataloader(id_list_path, training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
 
 	criterion = get_loss(training_cfg['loss'])
 
-	optimizer = optim.SGD(model_train.trainable_parameters(debug=True), lr=0.00025, momentum=0.9, weight_decay=1e-5)
-	pdb.set_trace()
+	optimizer = optim.SGD(model_train.trainable_parameters(False), lr=0.000075, momentum=0.9, weight_decay=1e-5)
 	exper_name = os.path.basename(args.config).split(".")[0]
 	checkpoint_dir = os.path.join('test', 'checkpoint', exper_name)
 	last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
