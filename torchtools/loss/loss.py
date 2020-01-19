@@ -141,24 +141,31 @@ def ori_loss(inputs, data):
 
 	# Por ahora batch size de 1
 
-	def _bin_loss_aux(scores, label):
-		bin_loss = F.binary_cross_entropy_with_logits(scores, label, reduction="none")
+	def _bin_loss_aux(scores, label, balance=False):
+		if balance:
+			pos_weight = torch.FloatTensor([5.0]).to(scores.device)
+			bin_loss = F.binary_cross_entropy_with_logits(scores, label, 
+													reduction="none",
+													pos_weight=pos_weight)
+		else:
+			bin_loss = F.binary_cross_entropy_with_logits(scores, label, 
+													reduction="none",)
 		return (bin_loss * weights).sum() / (weights.sum() + 1.0)
 
 
-	seg = inputs['seg'].squeeze()
-	seg_v = inputs['seg_v'].squeeze()
-	seg_h = inputs['seg_h'].squeeze()
+	seg = inputs['seg'].squeeze(1)
+	seg_v = inputs['seg_v'].squeeze(1)
+	seg_h = inputs['seg_h'].squeeze(1)
 	device = seg.device
 
-	weights = data['weights'].to(device).squeeze()
-	label_v = data['mask_v'].to(device).squeeze()
-	label_h = data['mask_h'].to(device).squeeze()
-	label = data['mask'].to(device).squeeze()
+	weights = data['weights'].to(device)
+	label_v = data['mask_v'].to(device)
+	label_h = data['mask_h'].to(device)
+	label = data['mask'].to(device)
 
 	main_loss = _bin_loss_aux(seg, label)
-	aux_loss = (_bin_loss_aux(seg_v, label_v) + _bin_loss_aux(seg_h, label_h)) / 2.0
-
+	aux_loss = (_bin_loss_aux(seg_v, label_v, balance=False) + _bin_loss_aux(seg_h, label_h, balance=False)) / 2.0
+	
 	return main_loss + 0.4 * aux_loss
 
 

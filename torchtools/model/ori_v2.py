@@ -11,6 +11,7 @@ from torch.nn.modules.conv import _ConvNd
 from torch.nn.modules.utils import _pair
 from .register import register
 from .gabor import gabor
+from .angle_net import predict
 
 def compute_seg(x, output_shape, classifier):
 	x = F.interpolate(x, size=output_shape, mode='bilinear', align_corners=False)
@@ -19,6 +20,8 @@ def compute_seg(x, output_shape, classifier):
 class AttentionModule(nn.Module):
 	def __init__(self, channels_input, channels_gating):
 		super(AttentionModule, self).__init__()
+
+		reduce_input = 
 
 		self._gate_conv = nn.Sequential(
 			nn.Conv2d(channels_input + channels_gating, channels_input, 1, bias=False),
@@ -37,14 +40,16 @@ class AttentionModule(nn.Module):
 class OrientedNet(Deeplabv3Plus):
 	def __init__(self, n_classes, pretrained_model, aux=False, out_planes_skip=48,
 					min_angle=-45.0, max_angle=45.0, angle_step=15.0, 
-					kernel_size=7, grid_size=3, dilation=4, ori_planes=[256, 128, 128, 128, 64],
-					fuse_planes = [128, 128, 128]):
+					grid_size=5, dilation=2, ori_planes=[64, 64, 64],
+					fuse_planes = [128, 128]):
 
 		super(OrientedNet, self).__init__(n_classes, pretrained_model, 
 									aux=False, 
 									out_planes_skip=out_planes_skip)
 		
 		self.freeze_parameters()
+
+		kernel_size = grid_size + (grid_size - 1) * 2
 		
 		channels_layer1 = 256
 		channels_decoder = channels_layer1 // 4
@@ -56,11 +61,13 @@ class OrientedNet(Deeplabv3Plus):
 			nn.Dropout(0.5))
 		self.reduce_decoder.apply(init_conv)
 
+
 		self.at_mod = AttentionModule(channels_layer1, channels_decoder)
 		self.at_mod.apply(init_conv)
 
 		self.grids_v, self.grids_h = self.compute_grids(min_angle, max_angle, angle_step, kernel_size, grid_size)
 
+		
 		self.ori_convs = self.create_ori_convs(ori_planes, kernel_size, grid_size, dilation)
 
 		self.fuse_net = self.create_fuse_net(fuse_planes, grid_size, dilation)
@@ -69,7 +76,13 @@ class OrientedNet(Deeplabv3Plus):
 		self.line_clf_ori = nn.Conv2d(fuse_planes[-1], 1, kernel_size=1, stride=1, bias=False)
 		init_conv(self.line_clf_ori)
 
-		self.aux_clf_ori = nn.Conv2d(fuse_planes[-1], 1, kernel_size=1, stride=1, bias=False)
+		n_out_aux = ori_planes[-1] // 4
+		self.aux_ori_conv = OrientedConv2d(ori_planes[-1], n_out_aux,
+								kernel_size=kernel_size, 
+								padding=self.padding(dilation, grid_size), 
+								dilation=dilation)
+		self.aux_ori_conv.reset_parameters()
+		self.aux_clf_ori = nn.Conv2d(n_out_aux, 1, kernel_size=1, stride=1, bias=False)
 		init_conv(self.aux_clf_ori)
 
 	
@@ -112,7 +125,14 @@ class OrientedNet(Deeplabv3Plus):
 
 		return nn.Sequential(*layers)
 
-	
+
+	def to(self, device):
+		device_model = super(OrientedNet, self).to(device)
+		device_model.grids_v = self.grids_v.to(device)
+		device_model.grids_h = self.grids_h.to(device)
+		return device_model
+
+
 	def freeze_parameters(self):
 		for param in self.parameters():
 			param.requires_grad = False
@@ -150,6 +170,7 @@ class OrientedNet(Deeplabv3Plus):
 
 		x_decoder = self.reduce_decoder(features["decoder"])
 		x_layer1 = self.at_mod(features['layer1'], x_decoder)
+		x_layer1 = self.reduce_layer1(x_layer1)
 
 		x_v = []
 		x_h = []
@@ -159,12 +180,12 @@ class OrientedNet(Deeplabv3Plus):
 			x_v_aux = x.unsqueeze(0)
 			for _ori_conv in self.ori_convs:
 				x_v_aux = apply_ori_conv(x_v_aux, _ori_conv, self.grids_v, idx)
-			x_v.append(x_v_aux)
+			x_v.append(apply_ori_conv(x_v_aux, self.aux_ori_conv, self.grids_v, idx))
 			
 			x_h_aux = x.unsqueeze(0)
 			for _ori_conv in self.ori_convs:
 				x_h_aux = apply_ori_conv(x_h_aux, _ori_conv, self.grids_h, idx)
-			x_h.append(x_h_aux)
+			x_h.append(apply_ori_conv(x_h_aux, self.aux_ori_conv, self.grids_h, idx))
 
 			x_cat.append(torch.cat([x_v_aux, x_h_aux], dim=1))
 		
@@ -183,6 +204,25 @@ class OrientedNet(Deeplabv3Plus):
 			result["out"]["seg_v"] = seg_v
 			result["out"]["seg_h"] = seg_h
 			result["out"]["seg"] = seg
+		else:
+			seg_v = torch.sigmoid(seg_v).squeeze().cpu().numpy()
+			seg_h = torch.sigmoid(seg_h).squeeze().cpu().numpy()
+
+			seg_multi = compute_seg(features["decoder"], input_shape, self.classifier)
+			pdb.set_trace()
+			result["seg_mask_v2"] = predict(seg_multi, seg.squeeze())
+
+			# plt.figure()
+			# plt.imshow(seg)
+			# plt.title("Seg")
+			# plt.figure()
+			# plt.imshow(seg_v)
+			# plt.title("Seg V")
+			# plt.figure()
+			# plt.imshow(seg_h)
+			# plt.title("Seg H")
+			# plt.show()
+
 		return result
 
 

@@ -168,6 +168,7 @@ class CheckpointSaver:
 		torch.save({
 			'epoch': epoch,
 			'model_state_dict': model.state_dict(),
+			'learning_rate': optimizer.param_groups[0]['lr'],
 			'optimizer_state_dict': optimizer.state_dict()}, checkpoint_path)
 
 class VideoSaver:

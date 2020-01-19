@@ -56,23 +56,29 @@ if __name__ == "__main__":
 
 	id_list_path = os.path.join('test', 'list', 'train.txt')
 	model_train = get_model(num_classes, training_cfg["model"], training_cfg.get('aux_loss', False)).to(device)
-	model_train.grids_v = model_train.grids_v.to(device)
-	model_train.grids_h = model_train.grids_h.to(device)
 	train_dataloader = get_dataloader(id_list_path, training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
-
 	criterion = get_loss(training_cfg['loss'])
 
-	optimizer = optim.SGD(model_train.trainable_parameters(False), lr=0.000075, momentum=0.9, weight_decay=1e-5)
 	exper_name = os.path.basename(args.config).split(".")[0]
 	checkpoint_dir = os.path.join('test', 'checkpoint', exper_name)
 	last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
+
 	if last_checkpoint_path is not None:
-		print("CHECKPOINT: {}".format(last_checkpoint_path))
 		last_checkpoint = torch.load(last_checkpoint_path)
 		model_train.load_state_dict(last_checkpoint["model_state_dict"], strict=False)
 		current_epoch = last_checkpoint["epoch"]
+		learning_rate = last_checkpoint.get("learning_rate", 0.000075)
+		print("CHECKPOINT: {}".format(last_checkpoint_path))
+		print("Learning rate: {}".format(learning_rate))
 	else:
 		current_epoch = 0
+		learning_rate = 0.001
+
+	optimizer = optim.SGD(model_train.trainable_parameters(), 
+						lr=learning_rate, 
+						momentum=0.9, 
+						weight_decay=1e-5)
+	scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
 	checkpoint_saver = CheckpointSaver(checkpoint_dir, current_epoch)
 
 	for epoch in range(args.num_epochs):
@@ -89,6 +95,6 @@ if __name__ == "__main__":
 					criterion, 
 					optimizer,
 					training_cfg)
-
+				scheduler.step()
 			elif (epoch + 1) % val_cfg['val_epochs'] == 0:
 				checkpoint_saver(epoch, model_train, optimizer)

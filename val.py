@@ -91,15 +91,11 @@ if __name__ == "__main__":
 	device = torch.device("cuda:0" if torch.cuda.is_available() and not args.use_cpu else "cpu")
 
 	model_train = get_model(num_classes, training_cfg["model"], False).to(device)
-	model_train.grids_v = model_train.grids_v.to(device)
-	model_train.grids_h = model_train.grids_h.to(device)
 
 	id_list_path = os.path.join('test', 'list', '{}.txt').format('train' if args.train else 'val')
 	val_expers = {}
 	for _val_exper in val_cfg['val_expers']:
 		model_val = get_model(num_classes, _val_exper["model"]).to(device)
-		model_val.grids_v = model_train.grids_v.to(device)
-		model_val.grids_h = model_train.grids_h.to(device)
 		val_dataloader = get_dataloader(id_list_path, _val_exper['dataset'], val_cfg['batch_size'], shuffle=False)
 		val_expers[_val_exper['name']] = dict(model_val=model_val, val_dataloader=val_dataloader)
 
@@ -130,7 +126,7 @@ if __name__ == "__main__":
 		metric_v2 = RunningScore(4, pred_name='seg_mask_v2', label_name='label')
 		vis_saver_multi = SegVisSaver(4, pred_name='seg_mask', label_name='vis_image')
 		vis_saver_bi = SegVisSaver(4, pred_name='seg_mask_v2', label_name='vis_image')
-		result_saver = ResultsSaver(result_dir, metrics=dict(seg=metric, seg_v2=metric_v2), vis_savers=dict(seg=vis_saver_multi, lines_vis=vis_saver_bi))
+		result_saver = ResultsSaver(result_dir, metrics=dict(seg_v2=metric_v2), vis_savers=dict(lines_vis=vis_saver_bi))
 		###########################################################################################################################
 		validate(val_model, val_dataloader, result_saver)
 		print(">>>> score: {}".format(metric.value()))

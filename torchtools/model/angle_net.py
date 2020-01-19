@@ -21,7 +21,7 @@ def compute_seg(x, output_shape, classifier):
 def predict(seg, line_seg):
 	_, seg_mask = torch.max(seg, 1)
 	seg_mask = seg_mask.squeeze()
-	lines_mask = torch.sigmoid(line_seg) > 0.5
+	lines_mask = torch.sigmoid(line_seg.squeeze()) > 0.5
 	seg_mask_3c = torch.clamp(seg_mask-1, min=0, max=2)
 	seg_mask_v1 = copy.deepcopy(seg_mask)
 	seg_mask_v1[seg_mask_3c == 0] = lines_mask[seg_mask_3c == 0].type(seg_mask_v1.type())

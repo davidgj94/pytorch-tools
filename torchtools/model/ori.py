@@ -11,6 +11,7 @@ from torch.nn.modules.conv import _ConvNd
 from torch.nn.modules.utils import _pair
 from .register import register
 from .gabor import gabor
+from .angle_net import predict
 
 def compute_seg(x, output_shape, classifier):
 	x = F.interpolate(x, size=output_shape, mode='bilinear', align_corners=False)
@@ -110,6 +111,13 @@ class OrientedNet(Deeplabv3Plus):
 		n_angles = (len(angles) - 1) // 2 + 1
 		return grids[n_angles-1:], grids[:n_angles]
 	
+
+	def to(self, device):
+		device_model = super(OrientedNet, self).to(device)
+		device_model.grids_v = self.grids_v.to(device)
+		device_model.grids_h = self.grids_h.to(device)
+		return device_model
+	
 	def forward(self, inputs):
 
 		def _ori_conv(x, conv, grids, idx):
@@ -156,22 +164,26 @@ class OrientedNet(Deeplabv3Plus):
 			result["out"]["seg_h"] = seg_h
 			result["out"]["seg"] = seg
 		else:
-			seg_v = torch.sigmoid(seg_v).squeeze().cpu().numpy()
-			seg_h = torch.sigmoid(seg_h).squeeze().cpu().numpy()
-			seg = torch.sigmoid(seg).squeeze().cpu().numpy()
+			seg_v = torch.sigmoid(seg_v)
+			seg_h = torch.sigmoid(seg_h)
 
-			plt.figure()
-			plt.imshow(seg)
-			plt.title("Seg")
-			plt.figure()
-			plt.imshow(seg_v)
-			plt.title("Seg V")
-			plt.figure()
-			plt.imshow(seg_h)
-			plt.title("Seg H")
-			plt.show()
+			seg_multi = compute_seg(features["decoder"], input_shape, self.classifier)
+
+
+			result["seg_mask_v2"] = predict(seg_multi, seg)[1].cpu()
+
+			# plt.figure()
+			# plt.imshow(seg)
+			# plt.title("Seg")
+			# plt.figure()
+			# plt.imshow(seg_v)
+			# plt.title("Seg V")
+			# plt.figure()
+			# plt.imshow(seg_h)
+			# plt.title("Seg H")
+			# plt.show()
+
 		return result
-
 
 @register.attach('test_ori')
 class OrientedNetTest(OrientedNet):
