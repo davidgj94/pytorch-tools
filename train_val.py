@@ -40,26 +40,23 @@ def get_last_checkpoint(checkpoint_dir):
 
 def parse_args():
 	parser = ArgumentParser()
-	parser.add_argument('--config', type=str, required=True)
+	parser.add_argument('--config', type=str, required=True, nargs='+')
 	parser.add_argument('--num_epochs', type=int, default=1)
 	parser.add_argument('-cpu', dest='use_cpu', action='store_true')
 	parser.set_defaults(use_cpu=False)
 	return parser.parse_args()
 
+def main(config, num_epochs, use_cpu):
 
-if __name__ == "__main__":
-
-	args = parse_args()
-
-	num_classes, training_cfg, val_cfg = utils.get_cfgs(args.config)
-	device = torch.device("cuda:0" if torch.cuda.is_available() and not args.use_cpu else "cpu")
+	num_classes, training_cfg, val_cfg = utils.get_cfgs(config)
+	device = torch.device("cuda:0" if torch.cuda.is_available() and not use_cpu else "cpu")
 
 	id_list_path = os.path.join('test', 'list', 'train.txt')
-	model_train = get_model(num_classes, training_cfg["model"], training_cfg.get('aux_loss', False)).to(device)
+	model_train = get_model(num_classes, training_cfg["model"]).to(device)
 	train_dataloader = get_dataloader(id_list_path, training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
 	criterion = get_loss(training_cfg['loss'])
 
-	exper_name = os.path.basename(args.config).split(".")[0]
+	exper_name = os.path.basename(config).split(".")[0]
 	checkpoint_dir = os.path.join('test', 'checkpoint', exper_name)
 	last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
 
@@ -67,23 +64,23 @@ if __name__ == "__main__":
 		last_checkpoint = torch.load(last_checkpoint_path)
 		model_train.load_state_dict(last_checkpoint["model_state_dict"], strict=False)
 		current_epoch = last_checkpoint["epoch"]
-		learning_rate = last_checkpoint.get("learning_rate", 0.000075)
+		learning_rate = last_checkpoint.get("learning_rate", 0.0005)
 		print("CHECKPOINT: {}".format(last_checkpoint_path))
 		print("Learning rate: {}".format(learning_rate))
 	else:
 		current_epoch = 0
-		learning_rate = 0.001
+		learning_rate = 0.0005
 
-	optimizer = optim.SGD(model_train.trainable_parameters(), 
+	optimizer = optim.SGD(model_train.trainable_parameters(True), 
 						lr=learning_rate, 
 						momentum=0.9, 
 						weight_decay=1e-5)
 	scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
 	checkpoint_saver = CheckpointSaver(checkpoint_dir, current_epoch)
 
-	for epoch in range(args.num_epochs):
+	for epoch in range(num_epochs):
 
-		print('Epoch {}/{}'.format(epoch, args.num_epochs - 1))
+		print('Epoch {}/{}'.format(epoch, num_epochs - 1))
 		print('-' * 10)
 
 		# Each epoch has a training and validation phase
@@ -98,3 +95,11 @@ if __name__ == "__main__":
 				scheduler.step()
 			elif (epoch + 1) % val_cfg['val_epochs'] == 0:
 				checkpoint_saver(epoch, model_train, optimizer)
+
+
+
+
+if __name__ == "__main__":
+	args = parse_args()
+	for config_path in args.config:
+		main(config_path, args.num_epochs, args.use_cpu)

@@ -9,7 +9,7 @@ output_stride_params = { 16: dict(replace_stride_with_dilation=[False, False, Tr
 						}
 
 
-def get_model(n_classes, cfg, aux=False):
+def get_model(n_classes, cfg):
 
 	return_layers = dict(layer4='layer4', layer3='layer3', layer2='layer2', layer1='layer1')
 
@@ -19,6 +19,6 @@ def get_model(n_classes, cfg, aux=False):
 	model_params = cfg.get('params', {})
 	model = register.get(cfg['name'])(n_classes, 
 									  pretrained_model,
-									  aux=aux, **model_params)
+									  **model_params)
 	return model
 

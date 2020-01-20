@@ -111,38 +111,42 @@ class AngleDetectDataset(data.Dataset):
 class OriDataset(AngleDetectDataset):
 
 	def __init__(self, root, id_list_path, 
-		angle_step=15.0, min_angle=-45.0, max_angle=45.0, augmentations=[]):
+		angle_step=15.0, min_angle=-45.0, max_angle=45.0, augmentations=[], only_APR=False):
 
 		super(OriDataset, self).__init__(root, id_list_path, 
 										angle_step=angle_step,
 										min_angle=min_angle,
 										max_angle=max_angle,
 										augmentations=augmentations)
-
-		self.id_list = [img_id for img_id in self.id_list.tolist() if "APR" in img_id]
+		if only_APR:
+			self.id_list = [img_id for img_id in self.id_list.tolist() if "APR" in img_id]
 		
-	
 	def __getitem__(self, index):
 
 		data = super(OriDataset, self).__getitem__(index)
 		weight = data['weights']
 		label_test = data['label_test']
 
-		lines_v, _rot_angle_v = lines.extract_lines((label_test == 1), self.angle_range_v)
-		mask_v = lines.create_grid(label_test.shape, lines_v, width=16).astype(np.float32) * weight
+		mask = np.zeros(label_test.shape, dtype=np.float32)
+		mask_v = np.zeros(label_test.shape, dtype=np.float32)
+		mask_h = np.zeros(label_test.shape, dtype=np.float32)
+		if np.any(label_test == 1):
 
-		lines_h, _ = lines.extract_lines((label_test == 1), self.angle_range_h)
-		mask_h = lines.create_grid(label_test.shape, lines_h, width=16).astype(np.float32) * weight
+			lines_v, _rot_angle_v = lines.extract_lines((label_test == 1), self.angle_range_v)
+			mask_v = lines.create_grid(label_test.shape, lines_v, width=16).astype(np.float32) * weight
 
-		mask = np.clip(mask_v + mask_h, a_min=0.0, a_max=1.0)
+			lines_h, _ = lines.extract_lines((label_test == 1), self.angle_range_h)
+			mask_h = lines.create_grid(label_test.shape, lines_h, width=16).astype(np.float32) * weight
 
-		""" print("Rotation angle: {}".format(np.rad2deg(_rot_angle_v)))
-		plt.figure()
-		plt.imshow(mask_v)
-		plt.figure()
-		plt.imshow(mask_h)
-		plt.figure()
-		plt.imshow(mask) """
+			mask = np.clip(mask_v + mask_h, a_min=0.0, a_max=1.0)
+
+			""" print("Rotation angle: {}".format(np.rad2deg(_rot_angle_v)))
+			plt.figure()
+			plt.imshow(mask_v)
+			plt.figure()
+			plt.imshow(mask_h)
+			plt.figure()
+			plt.imshow(mask) """
 
 		data.update(mask_v=mask_v, mask_h=mask_h, mask=mask)
 

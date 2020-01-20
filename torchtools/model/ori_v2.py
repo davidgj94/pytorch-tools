@@ -5,7 +5,7 @@ import pdb
 from torch.nn import functional as F
 from collections import OrderedDict
 import matplotlib.pyplot as plt
-from .deeplab import Deeplabv3Plus, init_conv
+from .deeplab import Deeplabv3Plus, init_conv, Deeplabv3
 import copy
 from torch.nn.modules.conv import _ConvNd
 from torch.nn.modules.utils import _pair
@@ -21,12 +21,11 @@ class AttentionModule(nn.Module):
 	def __init__(self, channels_input, channels_gating):
 		super(AttentionModule, self).__init__()
 
-		reduce_input = 
-
 		self._gate_conv = nn.Sequential(
 			nn.Conv2d(channels_input + channels_gating, channels_input, 1, bias=False),
 			nn.GroupNorm(channels_input // 8, channels_input),
-			nn.ReLU(), 
+			nn.ReLU(),
+			nn.Dropout(0.1),
 			nn.Conv2d(channels_input, 1, 1, bias=False),
 			nn.GroupNorm(1, 1),
 			nn.Sigmoid()
@@ -36,54 +35,65 @@ class AttentionModule(nn.Module):
 		alphas = self._gate_conv(torch.cat([input_features, gating_features], dim=1))
 		return input_features * alphas
 
-@register.attach("ori_net_v2")
-class OrientedNet(Deeplabv3Plus):
-	def __init__(self, n_classes, pretrained_model, aux=False, out_planes_skip=48,
-					min_angle=-45.0, max_angle=45.0, angle_step=15.0, 
-					grid_size=5, dilation=2, ori_planes=[64, 64, 64],
-					fuse_planes = [128, 128]):
+class Deeplabv3_ori(Deeplabv3):
+	def __init__(self, n_classes, pretrained_model, freeze_params=False):
+		super(Deeplabv3_ori, self).__init__(n_classes, pretrained_model, aux=False)
+		self.aspp = nn.Sequential(*list(pretrained_model.classifier.children())[:-1])
+		if freeze_params:
+			self.freeze_parameters()
+	
+	def freeze_parameters(self):
+		for param in self.parameters():
+			param.requires_grad = False
 
-		super(OrientedNet, self).__init__(n_classes, pretrained_model, 
-									aux=False, 
-									out_planes_skip=out_planes_skip)
-		
-		self.freeze_parameters()
+@register.attach("ori_net_v2")
+class OrientedNet(Deeplabv3_ori):
+	def __init__(self, n_classes, pretrained_model, aux=False,
+					min_angle=-45.0, max_angle=45.0, angle_step=15.0, 
+					grid_size=5, dilation=2, ori_planes=[64, 32, 16, 8],
+					fuse_kernel_size=7, fuse_dilation=3, fuse_planes = [16, 16, 16], 
+					freeze_params=False, attention_mod=True):
+
+		super(OrientedNet, self).__init__(n_classes, pretrained_model, freeze_params=freeze_params)
 
 		kernel_size = grid_size + (grid_size - 1) * 2
 		
-		channels_layer1 = 256
-		channels_decoder = channels_layer1 // 4
-
-		self.reduce_decoder = nn.Sequential(
-			nn.Conv2d(256, channels_decoder, kernel_size=1, stride=1, bias=False),
-			nn.GroupNorm(channels_decoder // 8, channels_decoder),
+		channels_layer1 = 64
+		self.reduce_layer1 = nn.Sequential(
+			nn.Conv2d(256, channels_layer1, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(channels_layer1 // 8, channels_layer1),
 			nn.ReLU(),
 			nn.Dropout(0.5))
-		self.reduce_decoder.apply(init_conv)
+		self.reduce_layer1.apply(init_conv)
 
+		self.att_mod = None
+		if attention_mod:
 
-		self.at_mod = AttentionModule(channels_layer1, channels_decoder)
-		self.at_mod.apply(init_conv)
+			channels_aspp = channels_layer1 // 4
+			self.reduce_aspp = nn.Sequential(
+			nn.Conv2d(256, channels_aspp, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(channels_aspp // 8, channels_aspp),
+			nn.ReLU(),
+			nn.Dropout(0.5))
+			self.reduce_aspp.apply(init_conv)
+
+			self.att_mod = AttentionModule(channels_layer1, channels_aspp)
+			self.att_mod.apply(init_conv)
 
 		self.grids_v, self.grids_h = self.compute_grids(min_angle, max_angle, angle_step, kernel_size, grid_size)
 
-		
 		self.ori_convs = self.create_ori_convs(ori_planes, kernel_size, grid_size, dilation)
 
-		self.fuse_net = self.create_fuse_net(fuse_planes, grid_size, dilation)
+		self.fuse_net = self.create_fuse_net(fuse_planes, fuse_kernel_size, fuse_dilation)
 		self.fuse_net.apply(init_conv)
 
 		self.line_clf_ori = nn.Conv2d(fuse_planes[-1], 1, kernel_size=1, stride=1, bias=False)
 		init_conv(self.line_clf_ori)
 
-		n_out_aux = ori_planes[-1] // 4
-		self.aux_ori_conv = OrientedConv2d(ori_planes[-1], n_out_aux,
-								kernel_size=kernel_size, 
-								padding=self.padding(dilation, grid_size), 
-								dilation=dilation)
-		self.aux_ori_conv.reset_parameters()
-		self.aux_clf_ori = nn.Conv2d(n_out_aux, 1, kernel_size=1, stride=1, bias=False)
-		init_conv(self.aux_clf_ori)
+		self.aux_clf_ori = None
+		if aux:
+			self.aux_clf_ori = nn.Conv2d(ori_planes[-1], 1, kernel_size=1, stride=1, bias=False)
+			init_conv(self.aux_clf_ori)
 
 	
 	def padding(self, dilation, kernel_size):
@@ -131,11 +141,6 @@ class OrientedNet(Deeplabv3Plus):
 		device_model.grids_v = self.grids_v.to(device)
 		device_model.grids_h = self.grids_h.to(device)
 		return device_model
-
-
-	def freeze_parameters(self):
-		for param in self.parameters():
-			param.requires_grad = False
 	
 	
 	def compute_grids(self, min_angle, max_angle, angle_step, kernel_size, grid_size):
@@ -167,25 +172,31 @@ class OrientedNet(Deeplabv3Plus):
 
 		input_shape = inputs["image"].shape[-2:]
 		features = super(OrientedNet, self).forward(inputs, return_intermediate=True)
+		x_aspp = features["aspp"]
+		seg_multi = compute_seg(x_aspp, input_shape, self.classifier)
 
-		x_decoder = self.reduce_decoder(features["decoder"])
-		x_layer1 = self.at_mod(features['layer1'], x_decoder)
-		x_layer1 = self.reduce_layer1(x_layer1)
+		x_layer1 = self.reduce_layer1(features['layer1'])
+		if self.att_mod is not None:
+			x_aspp = F.interpolate(x_aspp, size=x_layer1.shape[-2:], mode='bilinear', align_corners=False)
+			x_aspp = self.reduce_aspp(x_aspp)
+			x_layer1 = self.att_mod(x_layer1, x_aspp)
 
 		x_v = []
 		x_h = []
 		x_cat = []
 		for idx, x in zip(inputs["angle_range_label"], x_layer1):
 
+			idx = 0 if (idx == 255) else idx
+
 			x_v_aux = x.unsqueeze(0)
 			for _ori_conv in self.ori_convs:
 				x_v_aux = apply_ori_conv(x_v_aux, _ori_conv, self.grids_v, idx)
-			x_v.append(apply_ori_conv(x_v_aux, self.aux_ori_conv, self.grids_v, idx))
+			x_v.append(x_v_aux)
 			
 			x_h_aux = x.unsqueeze(0)
 			for _ori_conv in self.ori_convs:
 				x_h_aux = apply_ori_conv(x_h_aux, _ori_conv, self.grids_h, idx)
-			x_h.append(apply_ori_conv(x_h_aux, self.aux_ori_conv, self.grids_h, idx))
+			x_h.append(x_h_aux)
 
 			x_cat.append(torch.cat([x_v_aux, x_h_aux], dim=1))
 		
@@ -194,23 +205,22 @@ class OrientedNet(Deeplabv3Plus):
 		x_cat = torch.cat(x_cat, dim=0)
 		x_fuse = self.fuse_net(x_cat)
 
-		seg_v = compute_seg(x_v, input_shape, self.aux_clf_ori)
-		seg_h = compute_seg(x_h, input_shape, self.aux_clf_ori)
-		seg = compute_seg(x_fuse, input_shape, self.line_clf_ori)
+		lines_seg = compute_seg(x_fuse, input_shape, self.line_clf_ori)
 
 		result = OrderedDict()
 		if self.training:
 			result["out"] = OrderedDict()
-			result["out"]["seg_v"] = seg_v
-			result["out"]["seg_h"] = seg_h
-			result["out"]["seg"] = seg
+			result["out"]["seg"] = seg_multi
+			result["out"]["lines_seg"] = lines_seg
+			if self.aux_clf_ori is not None:
+				seg_v = compute_seg(x_v, input_shape, self.aux_clf_ori)
+				seg_h = compute_seg(x_h, input_shape, self.aux_clf_ori)
+				result["out"]["seg_v"] = seg_v
+				result["out"]["seg_h"] = seg_h
 		else:
-			seg_v = torch.sigmoid(seg_v).squeeze().cpu().numpy()
-			seg_h = torch.sigmoid(seg_h).squeeze().cpu().numpy()
 
-			seg_multi = compute_seg(features["decoder"], input_shape, self.classifier)
-			pdb.set_trace()
-			result["seg_mask_v2"] = predict(seg_multi, seg.squeeze())
+			_, result["seg_mask_v2"] = predict(seg_multi, lines_seg.squeeze())
+			result["seg_mask_v2"] = result["seg_mask_v2"].cpu()
 
 			# plt.figure()
 			# plt.imshow(seg)

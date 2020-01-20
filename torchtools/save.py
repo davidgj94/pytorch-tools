@@ -92,8 +92,6 @@ class SegVisSaver(VisSaver):
 
 	def __call__(self, save_path, preds, data):
 		seg_mask, img = self.get_values(preds, data)
-		print(seg_mask.shape)
-		print(np.unique(seg_mask))
 		vis_img = vis_seg(img, seg_mask.astype(np.uint8), self.palette)
 		cv2.imwrite(save_path, vis_img)
 

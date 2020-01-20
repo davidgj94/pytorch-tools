@@ -16,6 +16,7 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 from .register import register
 
+
 @register.attach('deeplabv3')
 class Deeplabv3(nn.Module):
 

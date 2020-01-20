@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 import torch.nn as nn
+from torchtools.loss import utils
 
 
 class Loss:
@@ -123,84 +124,81 @@ def margin_ranking_loss(inputs, data, margin=0.1):
 	return sum(margin_loss) / len(margin_loss)
 
 
-@register.attach('bin_loss')
-def binary_loss(inputs, data):
+@register.attach('lines_binary_seg')
+def lines_binary_seg(inputs, data):
 
-	line_seg = inputs['line_seg']
-	device = line_seg.device
-	weights = data['weights'].to(device).squeeze(0)
+	lines_seg = inputs['lines_seg'].squeeze(1)
+	device = lines_seg.device
 
-	label_2c = data['label_2c'].to(device).squeeze(0)
-	bin_loss = F.binary_cross_entropy_with_logits(line_seg, label_2c, reduction="none")
-	bin_loss = (bin_loss * weights).sum() / (weights.sum() + 1.0)
+	weights = data['weights'].to(device)
+	label = data['mask'].to(device)
 
-	return bin_loss
-
-@register.attach('ori_loss')
-def ori_loss(inputs, data):
-
-	# Por ahora batch size de 1
-
-	def _bin_loss_aux(scores, label, balance=False):
-		if balance:
-			pos_weight = torch.FloatTensor([5.0]).to(scores.device)
-			bin_loss = F.binary_cross_entropy_with_logits(scores, label, 
-													reduction="none",
-													pos_weight=pos_weight)
-		else:
-			bin_loss = F.binary_cross_entropy_with_logits(scores, label, 
-													reduction="none",)
-		return (bin_loss * weights).sum() / (weights.sum() + 1.0)
+	return utils.binary_loss(lines_seg, label, weights)
 
 
-	seg = inputs['seg'].squeeze(1)
+
+@register.attach('aux_ori_loss_v1')
+def aux_ori_loss_v1(inputs, data):
+
 	seg_v = inputs['seg_v'].squeeze(1)
 	seg_h = inputs['seg_h'].squeeze(1)
-	device = seg.device
+	device = seg_h.device
 
 	weights = data['weights'].to(device)
 	label_v = data['mask_v'].to(device)
 	label_h = data['mask_h'].to(device)
-	label = data['mask'].to(device)
-
-	main_loss = _bin_loss_aux(seg, label)
-	aux_loss = (_bin_loss_aux(seg_v, label_v, balance=False) + _bin_loss_aux(seg_h, label_h, balance=False)) / 2.0
 	
-	return main_loss + 0.4 * aux_loss
+	return (utils.binary_loss(seg_v, label_v, weights) + utils.binary_loss(seg_h, label_h, weights)) / 2
 
 
-@register.attach('hist_loss')
-def hist_loss(inputs, data):
+@register.attach('aux_ori_loss_v2')
+def aux_ori_loss_v2(inputs, data):
 
-	def _bin_loss(line_seg, bin_label, weights):
-		loss = []
-		for _line_seg, _bin_label in zip(line_seg, bin_label):
-			_loss = F.binary_cross_entropy_with_logits(_line_seg, _bin_label, reduction="none")
-			loss.append((_loss * weights).sum() / (weights.sum() + 1.0))
-		return sum(loss)
+	seg_v = inputs['seg_v'].squeeze(1)
+	seg_h = inputs['seg_h'].squeeze(1)
+	device = seg_h.device
 
-	def _softmax_loss(line_seg, softmax_label):
-		loss = []
-		for _line_seg, _softmax_label in zip(line_seg, softmax_label):
-			loss.append(F.cross_entropy(_line_seg.unsqueeze(0), _softmax_label.unsqueeze(0), ignore_index=255))
-		return sum(loss)
+	weights = data['weights'].to(device)
+	label_v = data['mask_v'].to(device)
+	label_h = data['mask_h'].to(device)
 
-	line_seg = inputs['line_seg']
-	device = line_seg.device
-
-	if 'softmax_label' in data:
-
-		softmax_label = data['softmax_label'].to(device).squeeze(0)
-		bin_label = data['bin_label'].to(device).squeeze(0)
-		weights = data['weights'].to(device).squeeze(0)
-
-		bin_loss = _bin_loss(line_seg, bin_label, weights)
-		softmax_loss = _softmax_loss(line_seg, softmax_label)
-
-		return (bin_loss + softmax_loss) / 2
+	pos_weight = torch.FloatTensor([3.0])
 	
-	else:
+	return (utils.binary_loss(seg_v, label_v, weights, pos_weight=pos_weight) + utils.binary_loss(seg_h, label_h, weights, pos_weight=pos_weight)) / 2
 
-		return 0.0
+
+# @register.attach('hist_loss')
+# def hist_loss(inputs, data):
+
+# 	def _bin_loss(line_seg, bin_label, weights):
+# 		loss = []
+# 		for _line_seg, _bin_label in zip(line_seg, bin_label):
+# 			_loss = F.binary_cross_entropy_with_logits(_line_seg, _bin_label, reduction="none")
+# 			loss.append((_loss * weights).sum() / (weights.sum() + 1.0))
+# 		return sum(loss)
+
+# 	def _softmax_loss(line_seg, softmax_label):
+# 		loss = []
+# 		for _line_seg, _softmax_label in zip(line_seg, softmax_label):
+# 			loss.append(F.cross_entropy(_line_seg.unsqueeze(0), _softmax_label.unsqueeze(0), ignore_index=255))
+# 		return sum(loss)
+
+# 	line_seg = inputs['line_seg']
+# 	device = line_seg.device
+
+# 	if 'softmax_label' in data:
+
+# 		softmax_label = data['softmax_label'].to(device).squeeze(0)
+# 		bin_label = data['bin_label'].to(device).squeeze(0)
+# 		weights = data['weights'].to(device).squeeze(0)
+
+# 		bin_loss = _bin_loss(line_seg, bin_label, weights)
+# 		softmax_loss = _softmax_loss(line_seg, softmax_label)
+
+# 		return (bin_loss + softmax_loss) / 2
+	
+# 	else:
+
+# 		return 0.0
 
 
