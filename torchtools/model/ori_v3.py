@@ -17,23 +17,23 @@ def compute_seg(x, output_shape, classifier):
 	x = F.interpolate(x, size=output_shape, mode='bilinear', align_corners=False)
 	return classifier(x)
 
-class AttentionModule(nn.Module):
-	def __init__(self, channels_input, channels_gating):
-		super(AttentionModule, self).__init__()
+# class AttentionModule(nn.Module):
+# 	def __init__(self, channels_input, channels_gating):
+# 		super(AttentionModule, self).__init__()
 
-		self._gate_conv = nn.Sequential(
-			nn.Conv2d(channels_input + channels_gating, channels_input, 1, bias=False),
-			nn.GroupNorm(channels_input // 8, channels_input),
-			nn.ReLU(),
-			nn.Dropout(0.1),
-			nn.Conv2d(channels_input, 1, 1, bias=False),
-			nn.GroupNorm(1, 1),
-			nn.Sigmoid()
-		)
+# 		self._gate_conv = nn.Sequential(
+# 			nn.Conv2d(channels_input + channels_gating, channels_input, 1, bias=False),
+# 			nn.GroupNorm(channels_input // 8, channels_input),
+# 			nn.ReLU(),
+# 			nn.Dropout(0.1),
+# 			nn.Conv2d(channels_input, 1, 1, bias=False),
+# 			nn.GroupNorm(1, 1),
+# 			nn.Sigmoid()
+# 		)
 	
-	def forward(self, input_features, gating_features):
-		alphas = self._gate_conv(torch.cat([input_features, gating_features], dim=1))
-		return input_features * alphas
+# 	def forward(self, input_features, gating_features):
+# 		alphas = self._gate_conv(torch.cat([input_features, gating_features], dim=1))
+# 		return input_features * alphas
 
 class Deeplabv3_ori(Deeplabv3):
 	def __init__(self, n_classes, pretrained_model, freeze_params=False):
@@ -46,61 +46,86 @@ class Deeplabv3_ori(Deeplabv3):
 		for param in self.parameters():
 			param.requires_grad = False
 
-@register.attach("ori_net_v2")
+class ResidualBlock(nn.Module):
+	def __init__(self, in_planes, planes, groups=8, dilation=2):
+		super(ResidualBlock, self).__init__()
+		self.conv_net = nn.Sequential(
+			nn.Conv2d(in_planes, planes, kernel_size=3, stride=1, padding=dilation, dilation=dilation, bias=False),
+			nn.GroupNorm(groups, planes),
+			nn.ReLU(),
+			nn.Conv2d(planes, in_planes, kernel_size=3, stride=1, padding=dilation, dilation=dilation, bias=False),
+			nn.GroupNorm(groups, in_planes)
+			)
+	def forward(self, x):
+		return F.relu(x + self.conv_net(x))
+
+@register.attach("ori_net_v3")
 class OrientedNet(Deeplabv3_ori):
-	def __init__(self, n_classes, pretrained_model, aux=False,
+	def __init__(self, n_classes, pretrained_model, aux=True,
 					min_angle=-45.0, max_angle=45.0, angle_step=15.0, 
-					grid_size=5, dilation=2, ori_planes=[64, 32, 16, 8],
-					fuse_kernel_size=7, fuse_dilation=3, fuse_planes = [16, 16, 16], 
-					freeze_params=False, attention_mod=False):
+					grid_size=5, dilation=2, ori_planes=[64, 64, 64, 32],
+					fuse_kernel_size=5, fuse_dilation=6, fuse_planes = [64, 64, 64, 64], 
+					freeze_params=False, norm_groups=8, grouped_conv=False):
 
 		super(OrientedNet, self).__init__(n_classes, pretrained_model, freeze_params=freeze_params)
 
+		conv_groups = norm_groups if grouped_conv else 1
 		kernel_size = grid_size + (grid_size - 1) * 2
-		
-		channels_layer1 = 64
+		channels_layer1 = ori_planes[0]
+
 		self.reduce_layer1 = nn.Sequential(
 			nn.Conv2d(256, channels_layer1, kernel_size=1, stride=1, bias=False),
-			nn.GroupNorm(channels_layer1 // 8, channels_layer1),
+			nn.GroupNorm(norm_groups, channels_layer1),
 			nn.ReLU(),
 			nn.Dropout(0.5))
 		self.reduce_layer1.apply(init_conv)
 
-		self.att_mod = None
-		if attention_mod:
-
-			channels_aspp = channels_layer1 // 4
-			self.reduce_aspp = nn.Sequential(
-			nn.Conv2d(256, channels_aspp, kernel_size=1, stride=1, bias=False),
-			nn.GroupNorm(channels_aspp // 8, channels_aspp),
-			nn.ReLU(),
-			nn.Dropout(0.5))
-			self.reduce_aspp.apply(init_conv)
-
-			self.att_mod = AttentionModule(channels_layer1, channels_aspp)
-			self.att_mod.apply(init_conv)
-
 		self.grids_v, self.grids_h = self.compute_grids(min_angle, max_angle, angle_step, kernel_size, grid_size)
 
-		self.ori_convs = self.create_ori_convs(ori_planes, kernel_size, grid_size, dilation)
+		self.ori_convs = self.create_ori_convs(ori_planes, kernel_size, grid_size, dilation, norm_groups, conv_groups)
 
-		self.fuse_net = self.create_fuse_net(fuse_planes, fuse_kernel_size, fuse_dilation)
+		self.fuse_net = self.create_fuse_net(fuse_planes, fuse_kernel_size, fuse_dilation, norm_groups, conv_groups)
 		self.fuse_net.apply(init_conv)
 
-		self.line_clf_ori = nn.Conv2d(fuse_planes[-1], 1, kernel_size=1, stride=1, bias=False)
-		init_conv(self.line_clf_ori)
+		def _group_concat(x, y):
+			x = torch.chunk(x, norm_groups, dim=1)
+			y = torch.chunk(y, norm_groups, dim=1)
+			out = []
+			for _x, _y in zip(x, y):
+				out += [_x, _y]
+			return torch.cat(out, dim=1)
+			
+		def _concat(x, y):
+			return torch.cat([x, y], dim=1)
+
+		self.concat = _group_concat if grouped_conv else _concat
 
 		self.aux_clf_ori = None
-		if aux:
-			self.aux_clf_ori = nn.Conv2d(ori_planes[-1], 1, kernel_size=1, stride=1, bias=False)
-			init_conv(self.aux_clf_ori)
+		if grouped_conv:
+			layers = [nn.Conv2d(fuse_planes[-1], norm_groups, kernel_size=1, stride=1, bias=False, groups=norm_groups)]
+			layers += [nn.GroupNorm(1, norm_groups), nn.ReLU()]
+			layers += [nn.Conv2d(norm_groups, 1, kernel_size=1, stride=1, bias=False)]
+			self.line_clf_ori = nn.Sequential(*layers)
+			self.line_clf_ori.apply(init_conv)
+			if aux:
+				layers = [nn.Conv2d(ori_planes[-1], norm_groups, kernel_size=1, stride=1, bias=False, groups=norm_groups)]
+				layers += [nn.GroupNorm(1, norm_groups), nn.ReLU()]
+				layers += [nn.Conv2d(norm_groups, 1, kernel_size=1, stride=1, bias=False)]
+				self.aux_clf_ori = nn.Sequential(*layers)
+				self.aux_clf_ori.apply(init_conv)
+		else:
+			self.line_clf_ori = nn.Conv2d(fuse_planes[-1], 1, kernel_size=1, stride=1, bias=False)
+			init_conv(self.line_clf_ori)
+			if aux:
+				self.aux_clf_ori = nn.Conv2d(ori_planes[-1], 1, kernel_size=1, stride=1, bias=False)
+				init_conv(self.aux_clf_ori)
 
 	
 	def padding(self, dilation, kernel_size):
 		return dilation * (kernel_size - 1) // 2
-	
-	
-	def create_ori_convs(self, ori_planes, kernel_size, grid_size, dilation):
+
+
+	def create_ori_convs(self, ori_planes, kernel_size, grid_size, dilation, norm_groups, conv_groups):
 
 		n_layers = len(ori_planes) - 1
 		layers = []
@@ -110,14 +135,17 @@ class OrientedNet(Deeplabv3_ori):
 			ori_conv = OrientedConv2d(in_planes, out_planes, 
 									kernel_size=kernel_size, 
 									padding=self.padding(dilation, grid_size), 
-									dilation=dilation)
+									dilation=dilation,
+									groups=conv_groups)
 			ori_conv.reset_parameters()
-			layers.append(ori_conv)
+			norm = nn.GroupNorm(norm_groups, out_planes)
+			relu = nn.ReLU()
+			layers += [ori_conv, norm, relu]
 
-		return nn.ModuleList(layers)
+		return nn.Sequential(*layers)
 	
 	
-	def create_fuse_net(self, fuse_planes, grid_size, dilation):
+	def create_fuse_net(self, fuse_planes, grid_size, dilation, norm_groups, conv_groups):
 		n_layers = len(fuse_planes) - 1
 		layers = []
 		for idx in np.arange(n_layers):
@@ -128,8 +156,9 @@ class OrientedNet(Deeplabv3_ori):
 						stride=1, 
 						padding=self.padding(dilation, grid_size), 
 						dilation=dilation, 
-						bias=False)
-			norm = nn.GroupNorm(out_planes // 8, out_planes)
+						bias=False,
+						groups=conv_groups)
+			norm = nn.GroupNorm(norm_groups, out_planes)
 			relu = nn.ReLU()
 			layers += [conv, norm, relu]
 
@@ -161,14 +190,23 @@ class OrientedNet(Deeplabv3_ori):
 
 		n_angles = (len(angles) - 1) // 2 + 1
 		return grids[n_angles-1:], grids[:n_angles]
-	
-	
-	def forward(self, inputs):
 
-		def apply_ori_conv(x, conv, grids, idx):
-			x_1 = F.relu(conv(x, grids[idx]))
-			x_2 = F.relu(conv(x, grids[idx+1]))
-			return x_1 + x_2
+
+	def forward_ori(self, x, grids, idx):
+
+		def set_up(grid):
+			for module in self.ori_convs._modules.values():
+				if isinstance(module, OrientedConv2d):
+					module.set_grid(grid)
+
+		set_up(grids[idx])
+		x_1 = self.ori_convs(x)
+		set_up(grids[idx+1])
+		x_2 = self.ori_convs(x)
+		return x_1 + x_2
+
+
+	def forward(self, inputs):
 
 		input_shape = inputs["image"].shape[-2:]
 		features = super(OrientedNet, self).forward(inputs, return_intermediate=True)
@@ -176,33 +214,21 @@ class OrientedNet(Deeplabv3_ori):
 		seg_multi = compute_seg(x_aspp, input_shape, self.classifier)
 
 		x_layer1 = self.reduce_layer1(features['layer1'])
-		if self.att_mod is not None:
-			x_aspp = F.interpolate(x_aspp, size=x_layer1.shape[-2:], mode='bilinear', align_corners=False)
-			x_aspp = self.reduce_aspp(x_aspp)
-			x_layer1 = self.att_mod(x_layer1, x_aspp)
 
 		x_v = []
 		x_h = []
-		x_cat = []
 		for idx, x in zip(inputs["angle_range_label"], x_layer1):
 
 			idx = 0 if (idx == 255) else idx
 
-			x_v_aux = x.unsqueeze(0)
-			for _ori_conv in self.ori_convs:
-				x_v_aux = apply_ori_conv(x_v_aux, _ori_conv, self.grids_v, idx)
-			x_v.append(x_v_aux)
-			
-			x_h_aux = x.unsqueeze(0)
-			for _ori_conv in self.ori_convs:
-				x_h_aux = apply_ori_conv(x_h_aux, _ori_conv, self.grids_h, idx)
-			x_h.append(x_h_aux)
+			x = x.unsqueeze(0)
+			x_v.append(self.forward_ori(x, self.grids_v, idx))
+			x_h.append(self.forward_ori(x, self.grids_h, idx))
 
-			x_cat.append(torch.cat([x_v_aux, x_h_aux], dim=1))
-		
 		x_v = torch.cat(x_v, dim=0)
 		x_h = torch.cat(x_h, dim=0)
-		x_cat = torch.cat(x_cat, dim=0)
+
+		x_cat = self.concat(x_v, x_h)
 		x_fuse = self.fuse_net(x_cat)
 
 		lines_seg = compute_seg(x_fuse, input_shape, self.line_clf_ori)
@@ -218,72 +244,24 @@ class OrientedNet(Deeplabv3_ori):
 				result["out"]["seg_v"] = seg_v
 				result["out"]["seg_h"] = seg_h
 		else:
-
 			_, result["seg_mask_v2"] = predict(seg_multi, lines_seg.squeeze())
 			result["seg_mask_v2"] = result["seg_mask_v2"].cpu()
 
+			seg_v = compute_seg(x_v, input_shape, self.aux_clf_ori).cpu().squeeze().numpy()
+			seg_h = compute_seg(x_h, input_shape, self.aux_clf_ori).cpu().squeeze().numpy()
 			# plt.figure()
 			# plt.imshow(seg)
 			# plt.title("Seg")
 			# plt.figure()
-			# plt.imshow(seg_v)
-			# plt.title("Seg V")
-			# plt.figure()
-			# plt.imshow(seg_h)
-			# plt.title("Seg H")
-			# plt.show()
+			plt.imshow(seg_v)
+			plt.title("Seg V")
+			plt.figure()
+			plt.imshow(seg_h)
+			plt.title("Seg H")
+			plt.show()
 
 		return result
 
-
-@register.attach('test_ori')
-class OrientedNetTest(OrientedNet):
-	def __init__(self, n_classes, pretrained_model, aux=False, out_planes_skip=48,):
-
-		kernel_size = 35
-		grid_size = 25
-
-		super(OrientedNetTest, self).__init__(n_classes, 
-											  pretrained_model, 
-											  kernel_size=kernel_size, 
-											  grid_size=grid_size)
-		test_weight = torch.FloatTensor(gabor(np.pi/2, kernel_size))
-		test_weight = test_weight.unsqueeze(0).repeat(256,1,1)
-		test_weight = test_weight.unsqueeze(0).repeat(64,1,1,1)
-		self.ori_conv1.weight = nn.Parameter(test_weight, requires_grad=False)
-	
-	def forward(self, idx):
-
-		rotated_weight_v_1 = self.ori_conv1.rotate_weight(self.grids_v[idx])[0,0].numpy()
-		rotated_weight_h_1 = self.ori_conv1.rotate_weight(self.grids_h[idx])[0,0].numpy()
-
-		rotated_weight_v_2 = self.ori_conv1.rotate_weight(self.grids_v[idx+1])[0,0].numpy()
-		rotated_weight_h_2 = self.ori_conv1.rotate_weight(self.grids_h[idx+1])[0,0].numpy()
-
-		plt.figure()
-		plt.imshow(rotated_weight_v_1 + rotated_weight_h_1)
-		plt.title("Rotated 1")
-		plt.figure()
-		plt.imshow(rotated_weight_h_1)
-		plt.title("Rotated H 1")
-
-		plt.figure()
-		plt.imshow(rotated_weight_v_2 + rotated_weight_h_2)
-		plt.title("Rotated 2")
-		plt.figure()
-		plt.imshow(rotated_weight_h_2)
-		plt.title("Rotated H 2")
-	
-		# for idx in np.arange(self.grids_v.shape[0]):
-		# 	rotated_weight_v = self.ori_conv1.rotate_weight(self.grids_v[idx])[0,0].numpy()
-		# 	rotated_weight_h = self.ori_conv1.rotate_weight(self.grids_h[idx])[0,0].numpy()
-		# 	plt.figure()
-		# 	plt.imshow(rotated_weight_v)
-		# 	plt.title("Rotated V")
-		# 	plt.figure()
-		# 	plt.imshow(rotated_weight_h)
-		# 	plt.title("Rotated H")
-		# 	plt.show()
 
 class OrientedConv2d(_ConvNd):
 	def __init__(self, in_channels, out_channels, kernel_size,
@@ -296,14 +274,20 @@ class OrientedConv2d(_ConvNd):
 		super(OrientedConv2d, self).__init__(
 			in_channels, out_channels, kernel_size, stride, padding, dilation,
 			False, _pair(0), groups, bias, 'zeros')
-	
-	def rotate_weight(self, grid,):
-		grid = grid.unsqueeze(0).repeat(self.weight.shape[0], 1, 1, 1)
-		rotated_weight = F.grid_sample(self.weight, grid)
-		return rotated_weight
 
-	def forward(self, input_features, grid):
-		return F.conv2d(input_features, self.rotate_weight(grid), self.bias, self.stride,
+		self.grid = None
+
+	def set_grid(self, grid):
+		self.grid = grid.unsqueeze(0).repeat(self.weight.shape[0], 1, 1, 1)
+
+	def rotate_weight(self,):
+		if self.grid is not None:
+			return F.grid_sample(self.weight, self.grid)
+		else:
+			return self.weight
+
+	def forward(self, input_features):
+		return F.conv2d(input_features, self.rotate_weight(), self.bias, self.stride,
 						self.padding, self.dilation, self.groups)
   
 	def reset_parameters(self):

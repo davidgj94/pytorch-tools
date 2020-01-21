@@ -97,8 +97,6 @@ def main(config, num_epochs, use_cpu):
 				checkpoint_saver(epoch, model_train, optimizer)
 
 
-
-
 if __name__ == "__main__":
 	args = parse_args()
 	for config_path in args.config:

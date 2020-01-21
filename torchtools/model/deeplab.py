@@ -113,7 +113,7 @@ class Deeplabv3Plus(Deeplabv3):
 
 			if not self.training:
 				_, seg = torch.max(seg, 1)
-				result["seg"] = seg
+				result["seg"] = seg.cpu()
 			else:
 				result["out"] = OrderedDict()
 				result["out"]["seg"] = seg
