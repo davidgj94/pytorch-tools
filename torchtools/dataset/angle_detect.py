@@ -65,6 +65,11 @@ class AngleDetectDataset(data.Dataset):
 		label = np.squeeze(label).astype(np.int64)
 		label_test = np.squeeze(label_test).astype(np.int64)
 
+		plt.figure()
+		plt.imshow(label)
+		plt.figure()
+		plt.imshow(label_test)
+
 		not_ignore = (label != 255)
 		label_3c = label.copy()
 		label_3c[not_ignore] = np.clip(label_3c[not_ignore] - 1, a_min=0, a_max=None)
@@ -120,7 +125,37 @@ class OriDataset(AngleDetectDataset):
 										augmentations=augmentations)
 		if only_APR:
 			self.id_list = [img_id for img_id in self.id_list.tolist() if "APR" in img_id]
+
+
+	def create_mask(self, label_test, weight, width):
 		
+		_, rot_angle = lines.extract_lines((label_test == 1), self.angle_range_v)
+		rot_angle = np.rad2deg(rot_angle)
+		angle_range = np.array([rot_angle - 2.5, rot_angle + 2.5])
+
+		lines_v, _ = lines.extract_lines((label_test == 1), angle_range, tresh=0.2)
+		mask_v = lines.create_grid(label_test.shape, lines_v, width=width).astype(np.float32) * weight
+		
+		lines_h, _ = lines.extract_lines((label_test == 1), angle_range + 90.0, tresh=0.2)
+		mask_h = lines.create_grid(label_test.shape, lines_h, width=width).astype(np.float32) * weight
+		
+		mask = np.clip(mask_v + mask_h, a_min=0.0, a_max=1.0)
+
+		return mask_v, mask_h, mask
+
+
+	def create_mask_test(self, label_test, weight, width1=24, width2=8):
+
+		_, _, mask_1 = self.create_mask(label_test, weight, width1)
+		_, _, mask_2 = self.create_mask(label_test, weight, width2)
+		not_ignore = weight > 0.0
+		mask_test = label_test.copy()
+		mask_test[not_ignore] = 0
+		mask_test[mask_1 > 0.0] = 255
+		mask_test[mask_2 > 0.0] = 1
+		return mask_test
+
+
 	def __getitem__(self, index):
 
 		data = super(OriDataset, self).__getitem__(index)
@@ -131,24 +166,15 @@ class OriDataset(AngleDetectDataset):
 		mask_v = np.zeros(label_test.shape, dtype=np.float32)
 		mask_h = np.zeros(label_test.shape, dtype=np.float32)
 		if np.any(label_test == 1):
+			mask_v, mask_h, mask = self.create_mask(label_test, weight, width=16)
+		
+		mask_test = self.create_mask_test(label_test, weight, width1=24, width2=8)
 
-			lines_v, _rot_angle_v = lines.extract_lines((label_test == 1), self.angle_range_v)
-			mask_v = lines.create_grid(label_test.shape, lines_v, width=16).astype(np.float32) * weight
+		plt.figure()
+		plt.imshow(mask_test)
+		plt.show()
 
-			lines_h, _ = lines.extract_lines((label_test == 1), self.angle_range_h)
-			mask_h = lines.create_grid(label_test.shape, lines_h, width=16).astype(np.float32) * weight
-
-			mask = np.clip(mask_v + mask_h, a_min=0.0, a_max=1.0)
-
-			""" print("Rotation angle: {}".format(np.rad2deg(_rot_angle_v)))
-			plt.figure()
-			plt.imshow(mask_v)
-			plt.figure()
-			plt.imshow(mask_h)
-			plt.figure()
-			plt.imshow(mask) """
-
-		data.update(mask_v=mask_v, mask_h=mask_h, mask=mask)
+		data.update(mask_v=mask_v, mask_h=mask_h, mask=mask, mask_test=mask_test)
 
 		return data
 

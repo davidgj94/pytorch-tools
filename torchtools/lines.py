@@ -187,8 +187,8 @@ def get_line_proposals(angle_range, sz, angle_step=5.0, rho_step=100, plot=False
 	return lines_coeffs, lines_intersects
 	
 
-def extract_lines(gt, angle_range):
-	_, _angles, _dists = search_lines(gt, angle_range, npoints=1000, min_distance=100, min_angle=300, threshold=None)
+def extract_lines(gt, angle_range, tresh=None):
+	_, _angles, _dists = search_lines(gt, angle_range, npoints=1000, min_distance=100, min_angle=300, threshold=tresh)
 	return get_lines(_dists, _angles), _angles.mean()
 
 

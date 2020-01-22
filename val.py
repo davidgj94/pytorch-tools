@@ -114,18 +114,12 @@ if __name__ == "__main__":
 	else:
 		current_epoch = 0
 
-	result_dir = os.path.join('test', 'results', exper_name)
+	result_dir = os.path.join('test', 'results', exper_name, 'epoch_{}'.format(current_epoch))
 	for val_exper_name, val_exper in val_expers.items():
 		print('>> {}'.format(val_exper_name))
 		val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
 		val_model.load_state_dict(model_train.state_dict(), strict=False)
-		########### Aquí definimos la métrica que vamos a utilizar (en un futuro mediante fichero conf) ###########################
-		#metric = RunningScore(num_classes, pred_name="seg", label_name="label")
-		#metric = AccuracyAngleRange(pred_name="hist", label_name="angle_range_label")
-		metric = RunningScore(4, pred_name='seg', label_name='label')
-		metric_v2 = RunningScore(4, pred_name='seg_mask_v2', label_name='label')
-		vis_saver_multi = SegVisSaver(4, pred_name='seg', label_name='vis_image')
-		vis_saver_bi = SegVisSaver(4, pred_name='seg_mask_v2', label_name='vis_image')
-		result_saver = ResultsSaver(result_dir, metrics=dict(seg_v2=metric), vis_savers=dict(lines_vis=vis_saver_multi))
-		###########################################################################################################################
+		metric = RunningScore(4, pred_name='seg', label_name='mask_test')
+		vis_saver = SegVisSaver(4, pred_name='seg', label_name='vis_image')
+		result_saver = ResultsSaver(result_dir, metrics=dict(iou=metric), vis_savers=dict(vis=vis_saver))
 		validate(val_model, val_dataloader, result_saver)
