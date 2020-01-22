@@ -97,8 +97,9 @@ class OrientedNet_2dir(Deeplabv3_ori):
 		angle_range_h = angle_range_v + 90.0
 
 		kernel_size = grid_size + (grid_size - 1) * 2
-		self.grids_v = compute_grids(angle_range_v.tolist(), angle_step, kernel_size, grid_size)
-		self.grids_h = compute_grids(angle_range_h.tolist(), angle_step, kernel_size, grid_size)
+		self.grids_h = compute_grids(angle_range_v.tolist(), angle_step, kernel_size, grid_size)
+		self.grids_v = compute_grids(angle_range_h.tolist(), angle_step, kernel_size, grid_size)
+		# Estan cambiados para que coincida con el criterio del dataset
 
 		padding_ori = padding(dilation, grid_size)
 		self.ori_net = create_convnet(OrientedConv2d, ori_planes, kernel_size, padding_ori, dilation, norm_groups)
@@ -151,6 +152,59 @@ class OrientedNet_2dir(Deeplabv3_ori):
 			result["seg"] = seg_multi
 
 		return result, features, input_shape
+
+
+@register.attach('test_ori_v4')
+class OrientedNetTest(OrientedNet_2dir):
+	def __init__(self, n_classes, pretrained_model, aux=False):
+
+		grid_size = 25
+		kernel_size = grid_size + (grid_size - 1) * 2
+		ori_planes=[256, 1]
+
+
+		super(OrientedNetTest, self).__init__(n_classes, 
+											  pretrained_model, 
+											  grid_size=grid_size,
+											  ori_planes=ori_planes)
+
+		test_weight = torch.FloatTensor(gabor(np.pi/2, kernel_size))
+		test_weight = test_weight.unsqueeze(0).repeat(ori_planes[0],1,1)
+		test_weight = test_weight.unsqueeze(0).repeat(ori_planes[1],1,1,1)
+		for module in self.ori_net._modules.values():
+			if isinstance(module, OrientedConv2d):
+				module.weight = nn.Parameter(test_weight, requires_grad=False)
+
+	def get_weight(self, grid):
+		for module in self.ori_net._modules.values():
+			if isinstance(module, OrientedConv2d):
+				module.set_grid(grid)
+				return module.rotate_weight()
+		return None
+
+	
+	def forward(self,idx):
+
+		rotated_weight_v = self.get_weight(self.grids_v[idx])[0,0].numpy()
+		rotated_weight_h = self.get_weight(self.grids_h[idx])[0,0].numpy()
+		plt.figure()
+		plt.imshow(rotated_weight_v + rotated_weight_h)
+
+		rotated_weight_v = self.get_weight(self.grids_v[idx+1])[0,0].numpy()
+		rotated_weight_h = self.get_weight(self.grids_h[idx+1])[0,0].numpy()
+		plt.figure()
+		plt.imshow(rotated_weight_v + rotated_weight_h)
+
+		# for idx in np.arange(self.grids_v.shape[0]):
+		# 	rotated_weight_v = self.get_weight(self.grids_v[idx])[0,0].numpy()
+		# 	rotated_weight_h = self.get_weight(self.grids_h[idx])[0,0].numpy()
+		# 	plt.figure()
+		# 	plt.imshow(rotated_weight_v)
+		# 	plt.title("Rotated V")
+		# 	plt.figure()
+		# 	plt.imshow(rotated_weight_h)
+		# 	plt.title("Rotated H")
+		# 	plt.show()
 
 
 

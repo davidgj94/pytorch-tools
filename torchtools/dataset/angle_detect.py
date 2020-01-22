@@ -65,11 +65,6 @@ class AngleDetectDataset(data.Dataset):
 		label = np.squeeze(label).astype(np.int64)
 		label_test = np.squeeze(label_test).astype(np.int64)
 
-		plt.figure()
-		plt.imshow(label)
-		plt.figure()
-		plt.imshow(label_test)
-
 		not_ignore = (label != 255)
 		label_3c = label.copy()
 		label_3c[not_ignore] = np.clip(label_3c[not_ignore] - 1, a_min=0, a_max=None)
@@ -128,7 +123,7 @@ class OriDataset(AngleDetectDataset):
 
 
 	def create_mask(self, label_test, weight, width):
-		
+
 		_, rot_angle = lines.extract_lines((label_test == 1), self.angle_range_v)
 		rot_angle = np.rad2deg(rot_angle)
 		angle_range = np.array([rot_angle - 2.5, rot_angle + 2.5])
@@ -169,10 +164,6 @@ class OriDataset(AngleDetectDataset):
 			mask_v, mask_h, mask = self.create_mask(label_test, weight, width=16)
 		
 		mask_test = self.create_mask_test(label_test, weight, width1=24, width2=8)
-
-		plt.figure()
-		plt.imshow(mask_test)
-		plt.show()
 
 		data.update(mask_v=mask_v, mask_h=mask_h, mask=mask, mask_test=mask_test)
 

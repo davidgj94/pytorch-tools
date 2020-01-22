@@ -29,7 +29,7 @@ def _test(dataset_params):
 	id_list_path = os.path.join('test', 'list', 'train.txt')
 	dataset = get_dataset("ori_dataset")(**dataset_params)
 	loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0)
-	model = get_model(4, dict(name="test_ori", stride=16))
+	model = get_model(4, dict(name="test_ori_v4", stride=16))
 	for _iter, data in tqdm(enumerate(loader), total=len(loader), dynamic_ncols=True):
 		idx = data['angle_range_label'].item()
 		model(idx)
