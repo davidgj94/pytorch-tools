@@ -18,25 +18,30 @@ def compute_seg(x, output_shape, classifier):
 	x = F.interpolate(x, size=output_shape, mode='bilinear', align_corners=False)
 	return classifier(x)
 
-def compute_grids(min_angle, max_angle, angle_step, kernel_size, grid_size):
 
-		center = (kernel_size - 1) // 2
-		k = center - (grid_size - 1) // 2
-		
-		angles = np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
-		grids = []
-		for angle in (np.pi/2 - angles).tolist():
-			theta = torch.zeros(1, 2, 3)
-			theta[:, :, :2] = torch.tensor([[np.cos(angle), -1.0*np.sin(angle)],
-									   [np.sin(angle), np.cos(angle)]])
-			grid = F.affine_grid(theta, (1,1) + _pair(kernel_size))
-			grid = grid.squeeze(0)[k:-k, k:-k].unsqueeze(0)
-			grids.append(grid)
+def compute_grids(angle_range, angle_step, kernel_size, grid_size):
 
-		return torch.cat(grids, dim=0)
+	min_angle, max_angle = angle_range
+
+	center = (kernel_size - 1) // 2
+	k = center - (grid_size - 1) // 2
+	
+	angles = np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
+	grids = []
+	for angle in (np.pi/2 - angles).tolist():
+		theta = torch.zeros(1, 2, 3)
+		theta[:, :, :2] = torch.tensor([[np.cos(angle), -1.0*np.sin(angle)],
+									[np.sin(angle), np.cos(angle)]])
+		grid = F.affine_grid(theta, (1,1) + _pair(kernel_size))
+		grid = grid.squeeze(0)[k:-k, k:-k].unsqueeze(0)
+		grids.append(grid)
+
+	return torch.cat(grids, dim=0)
+
 
 def padding(dilation, kernel_size):
-		return dilation * (kernel_size - 1) // 2
+	return dilation * (kernel_size - 1) // 2
+
 
 def create_convnet(conv_layer, planes, kernel_size, padding, dilation, groups):
 
@@ -46,33 +51,33 @@ def create_convnet(conv_layer, planes, kernel_size, padding, dilation, groups):
 		else:
 			init_conv(m)
 
-		n_layers = len(planes) - 1
-		layers = []
-		for idx in np.arange(n_layers):
-			in_planes = planes[idx]
-			out_planes = planes[idx+1]
-			_conv = conv_layer(in_planes, out_planes, 
-									kernel_size=kernel_size, 
-									padding=padding, 
-									dilation=dilation,)
-			_init_conv(_conv)
-			norm = nn.GroupNorm(groups, out_planes)
-			relu = nn.ReLU()
-			layers += [conv, norm, relu]
+	n_layers = len(planes) - 1
+	layers = []
+	for idx in np.arange(n_layers):
+		in_planes = planes[idx]
+		out_planes = planes[idx+1]
+		_conv = conv_layer(in_planes, out_planes, 
+								kernel_size=kernel_size, 
+								padding=padding, 
+								dilation=dilation,)
+		_init_conv(_conv)
+		norm = nn.GroupNorm(groups, out_planes)
+		relu = nn.ReLU()
+		layers += [_conv, norm, relu]
 
-		return nn.Sequential(*layers)
-	
-def forward_ori(self, ori_net, x, grid):
+	return nn.Sequential(*layers)
+
+
+def forward_ori(ori_net, x, grid):
 	for module in ori_net._modules.values():
 		if isinstance(module, OrientedConv2d):
 			module.set_grid(grid)
 	return ori_net(x)
 
 
-class Deeplabv3_ori(Deeplabv3):
+class Deeplabv3_ori(Deeplabv3Plus):
 	def __init__(self, n_classes, pretrained_model, freeze_params=False):
 		super(Deeplabv3_ori, self).__init__(n_classes, pretrained_model, aux=False)
-		self.aspp = nn.Sequential(*list(pretrained_model.classifier.children())[:-1])
 		if freeze_params:
 			self.freeze_parameters()
 	
@@ -80,219 +85,198 @@ class Deeplabv3_ori(Deeplabv3):
 		for param in self.parameters():
 			param.requires_grad = False
 
-class ResidualBlock(nn.Module):
-	def __init__(self, in_planes, planes, groups=8, dilation=2):
-		super(ResidualBlock, self).__init__()
-		self.conv_net = nn.Sequential(
-			nn.Conv2d(in_planes, planes, kernel_size=3, stride=1, padding=dilation, dilation=dilation, bias=False),
-			nn.GroupNorm(groups, planes),
-			nn.ReLU(),
-			nn.Conv2d(planes, in_planes, kernel_size=3, stride=1, padding=dilation, dilation=dilation, bias=False),
-			nn.GroupNorm(groups, in_planes)
-			)
-	def forward(self, x):
-		return F.relu(x + self.conv_net(x))
 
-@register.attach("ori_net_v3")
-class OrientedNet(Deeplabv3_ori):
-	def __init__(self, n_classes, pretrained_model, aux=True,
+class OrientedNet_2dir(Deeplabv3_ori):
+	def __init__(self, n_classes, pretrained_model,
 					min_angle=-45.0, max_angle=45.0, angle_step=15.0, 
-					grid_size=5, dilation=2, ori_planes=[64, 64, 64, 32],
-					fuse_kernel_size=5, fuse_dilation=6, fuse_planes = [64, 64, 64, 64], 
-					freeze_params=False, norm_groups=8, grouped_conv=False):
+					grid_size=5, dilation=2, ori_planes=[256, 128, 64, 32],
+					freeze_params=True, norm_groups=8, aux=True):
 
-		super(OrientedNet, self).__init__(n_classes, pretrained_model, freeze_params=freeze_params)
+		super(OrientedNet_2dir, self).__init__(n_classes, pretrained_model, freeze_params=freeze_params)
+		angle_range_v = np.array([min_angle, max_angle])
+		angle_range_h = angle_range_v + 90.0
 
-		conv_groups = norm_groups if grouped_conv else 1
 		kernel_size = grid_size + (grid_size - 1) * 2
-		channels_layer1 = ori_planes[0]
+		self.grids_v = compute_grids(angle_range_v.tolist(), angle_step, kernel_size, grid_size)
+		self.grids_h = compute_grids(angle_range_h.tolist(), angle_step, kernel_size, grid_size)
 
-		self.reduce_layer1 = nn.Sequential(
-			nn.Conv2d(256, channels_layer1, kernel_size=1, stride=1, bias=False),
-			nn.GroupNorm(norm_groups, channels_layer1),
-			nn.ReLU(),
-			nn.Dropout(0.5))
-		self.reduce_layer1.apply(init_conv)
-
-		self.grids_v, self.grids_h = self.compute_grids(min_angle, max_angle, angle_step, kernel_size, grid_size)
-
-		self.ori_convs = self.create_ori_convs(ori_planes, kernel_size, grid_size, dilation, norm_groups, conv_groups)
-
-		self.fuse_net = self.create_fuse_net(fuse_planes, fuse_kernel_size, fuse_dilation, norm_groups, conv_groups)
-		self.fuse_net.apply(init_conv)
-
-		def _group_concat(x, y):
-			x = torch.chunk(x, norm_groups, dim=1)
-			y = torch.chunk(y, norm_groups, dim=1)
-			out = []
-			for _x, _y in zip(x, y):
-				out += [_x, _y]
-			return torch.cat(out, dim=1)
-			
-		def _concat(x, y):
-			return torch.cat([x, y], dim=1)
-
-		self.concat = _group_concat if grouped_conv else _concat
+		padding_ori = padding(dilation, grid_size)
+		self.ori_net = create_convnet(OrientedConv2d, ori_planes, kernel_size, padding_ori, dilation, norm_groups)
 
 		self.aux_clf_ori = None
-		if grouped_conv:
-			layers = [nn.Conv2d(fuse_planes[-1], norm_groups, kernel_size=1, stride=1, bias=False, groups=norm_groups)]
-			layers += [nn.GroupNorm(1, norm_groups), nn.ReLU()]
-			layers += [nn.Conv2d(norm_groups, 1, kernel_size=1, stride=1, bias=False)]
-			self.line_clf_ori = nn.Sequential(*layers)
-			self.line_clf_ori.apply(init_conv)
-			if aux:
-				layers = [nn.Conv2d(ori_planes[-1], norm_groups, kernel_size=1, stride=1, bias=False, groups=norm_groups)]
-				layers += [nn.GroupNorm(1, norm_groups), nn.ReLU()]
-				layers += [nn.Conv2d(norm_groups, 1, kernel_size=1, stride=1, bias=False)]
-				self.aux_clf_ori = nn.Sequential(*layers)
-				self.aux_clf_ori.apply(init_conv)
-		else:
-			self.line_clf_ori = nn.Conv2d(fuse_planes[-1], 1, kernel_size=1, stride=1, bias=False)
-			init_conv(self.line_clf_ori)
-			if aux:
-				self.aux_clf_ori = nn.Conv2d(ori_planes[-1], 1, kernel_size=1, stride=1, bias=False)
-				init_conv(self.aux_clf_ori)
-
-	
-	def padding(self, dilation, kernel_size):
-		return dilation * (kernel_size - 1) // 2
-
-
-	def create_ori_convs(self, ori_planes, kernel_size, grid_size, dilation, norm_groups, conv_groups):
-
-		n_layers = len(ori_planes) - 1
-		layers = []
-		for idx in np.arange(n_layers):
-			in_planes = ori_planes[idx]
-			out_planes = ori_planes[idx+1]
-			ori_conv = OrientedConv2d(in_planes, out_planes, 
-									kernel_size=kernel_size, 
-									padding=self.padding(dilation, grid_size), 
-									dilation=dilation,
-									groups=conv_groups)
-			ori_conv.reset_parameters()
-			norm = nn.GroupNorm(norm_groups, out_planes)
-			relu = nn.ReLU()
-			layers += [ori_conv, norm, relu]
-
-		return nn.Sequential(*layers)
-	
-	
-	def create_fuse_net(self, fuse_planes, grid_size, dilation, norm_groups, conv_groups):
-		n_layers = len(fuse_planes) - 1
-		layers = []
-		for idx in np.arange(n_layers):
-			in_planes = fuse_planes[idx]
-			out_planes = fuse_planes[idx+1]
-			conv = nn.Conv2d(in_planes, out_planes, 
-						kernel_size=grid_size, 
-						stride=1, 
-						padding=self.padding(dilation, grid_size), 
-						dilation=dilation, 
-						bias=False,
-						groups=conv_groups)
-			norm = nn.GroupNorm(norm_groups, out_planes)
-			relu = nn.ReLU()
-			layers += [conv, norm, relu]
-
-		return nn.Sequential(*layers)
+		if aux:
+			self.aux_clf_ori = nn.Conv2d(ori_planes[-1], 1, kernel_size=1, stride=1, bias=False)
 
 
 	def to(self, device):
-		device_model = super(OrientedNet, self).to(device)
+		device_model = super(OrientedNet_2dir, self).to(device)
 		device_model.grids_v = self.grids_v.to(device)
 		device_model.grids_h = self.grids_h.to(device)
 		return device_model
+
+	def _forward_dir(self, x, grids, idx):
+		return forward_ori(self.ori_net, x, grids[idx]) + forward_ori(self.ori_net, x, grids[idx+1])
 	
-	
-	def compute_grids(self, min_angle, max_angle, angle_step, kernel_size, grid_size):
-
-		center = (kernel_size - 1) // 2
-		k = center - (grid_size - 1) // 2
-		
-		angles = np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
-		grids = []
-		for angle in (np.pi/2 - angles).tolist():
-			theta = torch.zeros(1, 2, 3)
-			theta[:, :, :2] = torch.tensor([[np.cos(angle), -1.0*np.sin(angle)],
-									   [np.sin(angle), np.cos(angle)]])
-			grid = F.affine_grid(theta, (1,1) + _pair(kernel_size))
-			grid = grid.squeeze(0)[k:-k, k:-k].unsqueeze(0)
-			grids.append(grid)
-		grids = torch.cat(grids, dim=0)
-
-		n_angles = (len(angles) - 1) // 2 + 1
-		return grids[n_angles-1:], grids[:n_angles]
-
-
-	def forward_ori(self, x, grids, idx):
-
-		def set_up(grid):
-			for module in self.ori_convs._modules.values():
-				if isinstance(module, OrientedConv2d):
-					module.set_grid(grid)
-
-		set_up(grids[idx])
-		x_1 = self.ori_convs(x)
-		set_up(grids[idx+1])
-		x_2 = self.ori_convs(x)
-		return x_1 + x_2
-
-
 	def forward(self, inputs):
 
 		input_shape = inputs["image"].shape[-2:]
-		features = super(OrientedNet, self).forward(inputs, return_intermediate=True)
-		x_aspp = features["aspp"]
-		seg_multi = compute_seg(x_aspp, input_shape, self.classifier)
-
-		x_layer1 = self.reduce_layer1(features['layer1'])
+		features = super(OrientedNet_2dir, self).forward(inputs, return_intermediate=True)
+		x_decoder = features["decoder"]
+		seg_multi = compute_seg(x_decoder, input_shape, self.classifier)
 
 		x_v = []
 		x_h = []
-		for idx, x in zip(inputs["angle_range_label"], x_layer1):
-
+		for idx, x in zip(inputs["angle_range_label"], x_decoder):
 			idx = 0 if (idx == 255) else idx
-
+			
 			x = x.unsqueeze(0)
-			x_v.append(self.forward_ori(x, self.grids_v, idx))
-			x_h.append(self.forward_ori(x, self.grids_h, idx))
+			x_v.append(self._forward_dir(x, self.grids_v, idx))
+			x_h.append(self._forward_dir(x, self.grids_h, idx))
 
 		x_v = torch.cat(x_v, dim=0)
+		features["x_v"] = x_v
 		x_h = torch.cat(x_h, dim=0)
-
-		x_cat = self.concat(x_v, x_h)
-		x_fuse = self.fuse_net(x_cat)
-
-		lines_seg = compute_seg(x_fuse, input_shape, self.line_clf_ori)
+		features["x_h"] = x_h
 
 		result = OrderedDict()
 		if self.training:
 			result["out"] = OrderedDict()
 			result["out"]["seg"] = seg_multi
-			result["out"]["lines_seg"] = lines_seg
 			if self.aux_clf_ori is not None:
 				seg_v = compute_seg(x_v, input_shape, self.aux_clf_ori)
 				seg_h = compute_seg(x_h, input_shape, self.aux_clf_ori)
 				result["out"]["seg_v"] = seg_v
 				result["out"]["seg_h"] = seg_h
 		else:
-			_, result["seg_mask_v2"] = predict(seg_multi, lines_seg.squeeze())
-			result["seg_mask_v2"] = result["seg_mask_v2"].cpu()
+			result["seg"] = seg_multi
 
-			seg_v = compute_seg(x_v, input_shape, self.aux_clf_ori).cpu().squeeze().numpy()
-			seg_h = compute_seg(x_h, input_shape, self.aux_clf_ori).cpu().squeeze().numpy()
-			# plt.figure()
-			# plt.imshow(seg)
-			# plt.title("Seg")
-			# plt.figure()
-			plt.imshow(seg_v)
-			plt.title("Seg V")
-			plt.figure()
-			plt.imshow(seg_h)
-			plt.title("Seg H")
-			plt.show()
+		return result, features, input_shape
+
+
+
+@register.attach("ori_net_2dir_max1")
+class OrientedNet_2dir_max1(OrientedNet_2dir):
+	def __init__(self, n_classes, pretrained_model, 
+					aux=True, grid_size=5, dilation=2, ori_planes=[256, 128, 64, 32]):
+		super(OrientedNet_2dir_max1, self).__init__(n_classes, pretrained_model, 
+												grid_size=grid_size, dilation=dilation, 
+												ori_planes=ori_planes, aux=aux)
+		
+		self.ori_clf = nn.Conv2d(ori_planes[-1], 1, kernel_size=1, stride=1, bias=False)
+
+	
+	def forward(self, inputs, return_intermediate=False):
+		
+		result, features, input_shape = super(OrientedNet_2dir_max1, self).forward(inputs)
+		x_v, x_h = features["x_v"], features["x_h"]
+		lines_seg = compute_seg(torch.max(x_v, x_h), input_shape, self.ori_clf)
+
+		if self.training:
+			result["out"]["lines_seg"] = lines_seg
+		else:
+			_, result["seg"] = predict(result["seg"], lines_seg.squeeze())
+			result["seg"] = result["seg"].cpu()
+
+		return result
+
+
+@register.attach("ori_net_2dir_max2")
+class OrientedNet_2dir_max2(OrientedNet_2dir):
+	def __init__(self, n_classes, pretrained_model, 
+					aux=True, grid_size=5, dilation=2, ori_planes=[256, 128, 64, 32], norm_groups=8):
+		super(OrientedNet_2dir_max2, self).__init__(n_classes, pretrained_model, 
+												grid_size=grid_size, dilation=dilation, 
+												ori_planes=ori_planes, norm_groups=norm_groups)
+		
+		decoder_channels = ori_planes[-1] // 4
+		self.reduce_decoder = nn.Sequential(
+			nn.Conv2d(256, decoder_channels, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(norm_groups, decoder_channels),
+			nn.ReLU(),
+			nn.Dropout(0.5))
+		self.reduce_decoder.apply(init_conv)
+
+		self.ori_clf = nn.Conv2d(ori_planes[-1] + decoder_channels, 1, kernel_size=1, stride=1, bias=False)
+
+	def forward(self, inputs):
+		
+		result, features, input_shape = super(OrientedNet_2dir_max2, self).forward(inputs)
+		x_v, x_h = features["x_v"], features["x_h"]
+		x_decoder = self.reduce_decoder(features["decoder"])
+		x_cat = torch.cat([torch.max(x_v, x_h), x_decoder], dim=1)
+		lines_seg = compute_seg(x_cat, input_shape, self.ori_clf)
+
+		if self.training:
+			result["out"]["lines_seg"] = lines_seg
+		else:
+			_, result["seg"] = predict(result["seg"], lines_seg.squeeze())
+			result["seg"] = result["seg"].cpu()
+
+		return result
+
+@register.attach("ori_net_2dir_concat1")
+class OrientedNet_2dir_concat1(OrientedNet_2dir):
+	def __init__(self, n_classes, pretrained_model, 
+					aux=True, grid_size=5, dilation=2, ori_planes=[256, 128, 64, 32],
+					fuse_kernel_size=7, fuse_dilation=2, fuse_planes=[64, 64, 64, 64], norm_groups=8):
+		super(OrientedNet_2dir_concat1, self).__init__(n_classes, pretrained_model, 
+												grid_size=grid_size, dilation=dilation, 
+												ori_planes=ori_planes, norm_groups=norm_groups)
+		fuse_padding = padding(fuse_dilation, fuse_kernel_size)
+		self.fuse_net = create_convnet(nn.Conv2d, fuse_planes, fuse_kernel_size, fuse_padding, fuse_dilation, norm_groups)
+
+		self.ori_clf = nn.Conv2d(fuse_planes[-1], 1, kernel_size=1, stride=1, bias=False)
+		
+	def forward(self, inputs):
+		
+		result, features, input_shape = super(OrientedNet_2dir_concat1, self).forward(inputs)
+		x_v, x_h = features["x_v"], features["x_h"]
+		x_fuse = self.fuse_net(torch.cat([x_v, x_h], dim=1))
+		lines_seg = compute_seg(x_fuse, input_shape, self.ori_clf)
+
+		if self.training:
+			result["out"]["lines_seg"] = lines_seg
+		else:
+			_, result["seg"] = predict(result["seg"], lines_seg.squeeze())
+			result["seg"] = result["seg"].cpu()
+
+		return result
+
+@register.attach("ori_net_2dir_concat2")
+class OrientedNet_2dir_concat2(OrientedNet_2dir):
+	def __init__(self, n_classes, pretrained_model, 
+					aux=True, grid_size=5, dilation=2, ori_planes=[256, 128, 64, 32],
+					fuse_kernel_size=7, fuse_dilation=2, fuse_planes=[64, 64, 64, 64], norm_groups=8):
+		super(OrientedNet_2dir_concat2, self).__init__(n_classes, pretrained_model, 
+												grid_size=grid_size, dilation=dilation, 
+												ori_planes=ori_planes, norm_groups=norm_groups)
+		decoder_channels = fuse_planes[-1] // 4
+		self.reduce_decoder = nn.Sequential(
+			nn.Conv2d(256, decoder_channels, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(norm_groups, decoder_channels),
+			nn.ReLU(),
+			nn.Dropout(0.5))
+		self.reduce_decoder.apply(init_conv)
+		
+		fuse_padding = padding(fuse_dilation, fuse_kernel_size)
+		self.fuse_net = create_convnet(nn.Conv2d, fuse_planes, fuse_kernel_size, fuse_padding, fuse_dilation, norm_groups)
+
+		self.ori_clf = nn.Conv2d(fuse_planes[-1] + decoder_channels, 1, kernel_size=1, stride=1, bias=False)
+		
+	def forward(self, inputs):
+		
+		result, features, input_shape = super(OrientedNet_2dir_concat2, self).forward(inputs)
+		x_v, x_h = features["x_v"], features["x_h"]
+		x_fuse = self.fuse_net(torch.cat([x_v, x_h], dim=1))
+		x_decoder = self.reduce_decoder(features["decoder"])
+		x_cat = torch.cat([x_fuse, x_decoder], dim=1)
+		lines_seg = compute_seg(x_cat, input_shape, self.ori_clf)
+
+		if self.training:
+			result["out"]["lines_seg"] = lines_seg
+		else:
+			_, result["seg"] = predict(result["seg"], lines_seg.squeeze())
+			result["seg"] = result["seg"].cpu()
 
 		return result
 

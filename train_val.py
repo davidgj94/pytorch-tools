@@ -100,4 +100,4 @@ def main(config, num_epochs, use_cpu):
 if __name__ == "__main__":
 	args = parse_args()
 	for config_path in args.config:
-		main(config_path, args.num_epochs, args.use_cpu)
+		main(config_path, args.num_epochs, args.use_cpu)pdb.set_trace()
