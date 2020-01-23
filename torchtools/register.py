@@ -25,7 +25,7 @@ class Register:
 				module_name = basename(x)[:-3]
 				if module_name != '__init__':
 					module_name = '{}.{}.{}'.format(ROOT_MODULE, self.current_module, module_name)
-					print(module_name)
+					# print(module_name)
 					__import__(module_name, globals(), locals())
 
 	def get(self, name):

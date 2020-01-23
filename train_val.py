@@ -41,7 +41,7 @@ def get_last_checkpoint(checkpoint_dir):
 def parse_args():
 	parser = ArgumentParser()
 	parser.add_argument('--config', type=str, required=True, nargs='+')
-	parser.add_argument('--num_epochs', type=int, default=1)
+	parser.add_argument('--num_epochs', type=int, required=True, nargs='+')
 	parser.add_argument('-cpu', dest='use_cpu', action='store_true')
 	parser.set_defaults(use_cpu=False)
 	return parser.parse_args()
@@ -59,17 +59,17 @@ def main(config, num_epochs, use_cpu):
 	exper_name = os.path.basename(config).split(".")[0]
 	checkpoint_dir = os.path.join('test', 'checkpoint', exper_name)
 	last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
+	current_epoch = 0
+	learning_rate = training_cfg.get("learning_rate", 0.0005)
 
 	if last_checkpoint_path is not None:
 		last_checkpoint = torch.load(last_checkpoint_path)
 		model_train.load_state_dict(last_checkpoint["model_state_dict"], strict=False)
 		current_epoch = last_checkpoint["epoch"]
-		learning_rate = last_checkpoint.get("learning_rate", 0.0005)
+		learning_rate = last_checkpoint.get("learning_rate", learning_rate)
 		print("CHECKPOINT: {}".format(last_checkpoint_path))
 		print("Learning rate: {}".format(learning_rate))
-	else:
-		current_epoch = 0
-		learning_rate = 0.0005
+
 
 	optimizer = optim.SGD(model_train.trainable_parameters(True), 
 						lr=learning_rate, 
@@ -99,5 +99,5 @@ def main(config, num_epochs, use_cpu):
 
 if __name__ == "__main__":
 	args = parse_args()
-	for config_path in args.config:
-		main(config_path, args.num_epochs, args.use_cpu)pdb.set_trace()
+	for config_path, num_epochs in zip(args.config, args.num_epochs):
+		main(config_path, num_epochs, args.use_cpu)

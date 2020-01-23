@@ -300,10 +300,11 @@ class OrientedNet_2dir_concat1(OrientedNet_2dir):
 class OrientedNet_2dir_concat2(OrientedNet_2dir):
 	def __init__(self, n_classes, pretrained_model, 
 					aux=True, grid_size=5, dilation=2, ori_planes=[256, 128, 64, 32],
-					fuse_kernel_size=7, fuse_dilation=2, fuse_planes=[64, 64, 64, 64], norm_groups=8):
+					fuse_kernel_size=7, fuse_dilation=2, fuse_planes=[64, 64, 64, 64], norm_groups=8, freeze_params=True):
 		super(OrientedNet_2dir_concat2, self).__init__(n_classes, pretrained_model, 
 												grid_size=grid_size, dilation=dilation, 
-												ori_planes=ori_planes, norm_groups=norm_groups)
+												ori_planes=ori_planes, norm_groups=norm_groups,
+												freeze_params=freeze_params)
 		decoder_channels = fuse_planes[-1] // 4
 		self.reduce_decoder = nn.Sequential(
 			nn.Conv2d(256, decoder_channels, kernel_size=1, stride=1, bias=False),
