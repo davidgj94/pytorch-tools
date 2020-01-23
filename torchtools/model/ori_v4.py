@@ -115,8 +115,12 @@ class OrientedNet_2dir(Deeplabv3_ori):
 		device_model.grids_h = self.grids_h.to(device)
 		return device_model
 
-	def _forward_dir(self, x, grids, idx):
-		return forward_ori(self.ori_net, x, grids[idx]) + forward_ori(self.ori_net, x, grids[idx+1])
+	def _forward_dir(self, x, grids, idx, interval=True):
+		if interval:
+			return forward_ori(self.ori_net, x, grids[idx]) + forward_ori(self.ori_net, x, grids[idx+1])
+		else:
+			return forward_ori(self.ori_net, x, grids[idx])
+
 	
 	def forward(self, inputs, return_intermediate=False):
 
@@ -336,6 +340,113 @@ class OrientedNet_2dir_hist(OrientedNet_2dir):
 			result["seg"] = seg_multi
 
 		return result
+
+@register.attach("ori_net_2dir_hist_v2")
+class OrientedNet_2dir_hist_v2(OrientedNet_2dir):
+	def __init__(self, n_classes, pretrained_model, aux=True,
+					grid_size=5, dilation=2, ori_planes=[256, 128, 128, 64],
+					fuse_kernel_size=7, fuse_dilation=2, fuse_planes=[128, 128, 128, 128], 
+					norm_groups=8, freeze_params=True, decoder_channels=128, n_iters=1):
+		super(OrientedNet_2dir_hist_v2, self).__init__(n_classes, pretrained_model, 
+												grid_size=grid_size, dilation=dilation, 
+												ori_planes=ori_planes, norm_groups=norm_groups,
+												freeze_params=freeze_params, aux=True)
+
+		self.reduce_decoder = nn.Sequential(
+			nn.Conv2d(256, decoder_channels, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(norm_groups, decoder_channels),
+			nn.ReLU(),
+			nn.Dropout(0.5))
+		self.reduce_decoder.apply(init_conv)
+		
+		fuse_padding = padding(fuse_dilation, fuse_kernel_size)
+		self.fuse_net = create_convnet(nn.Conv2d, fuse_planes, fuse_kernel_size, fuse_padding, fuse_dilation, norm_groups)
+
+		self.project = nn.Sequential(
+			nn.Conv2d(fuse_planes[-1] + decoder_channels, 256, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(norm_groups, 256),
+			nn.ReLU(),
+			nn.Dropout(0.1))
+		self.project.apply(init_conv)
+
+		self.ori_clf = nn.Conv2d(256, 1, kernel_size=1, stride=1, bias=False)
+
+		self.n_iters = n_iters
+	
+	def ori_block(self, x_in, true_indices, input_shape):
+
+		x_v_true = []
+		x_h_true = []
+		x_v = []
+		x_h = []
+		for true_idx, x in zip(true_indices, x_in.unsqueeze(1)):
+
+			x_v_aux = []
+			x_h_aux = []
+			for idx in np.arange(len(self.grids_v)):
+				x_v_aux.append(self._forward_dir(x, self.grids_v, idx, interval=False))
+				x_h_aux.append(self._forward_dir(x, self.grids_h, idx), interval=False)
+			x_v_aux = torch.cat(x_v_aux, dim=0)
+			x_h_aux = torch.cat(x_h_aux, dim=0)
+
+			x_v.append(compute_seg(x_v_aux, input_shape, self.aux_clf_ori).squeeze().unsqueeze(0))
+			x_h.append(compute_seg(x_h_aux, input_shape, self.aux_clf_ori).squeeze().unsqueeze(0))
+
+			x_v_true_aux = x_v_aux[true_idx] + x_v_aux[true_idx+1]
+			x_h_true_aux = x_h_aux[true_idx] + x_h_aux[true_idx+1]
+
+			x_v_true.append(x_v_true_aux.unsqueeze(0))
+			x_h_true.append(x_h_true_aux.unsqueeze(0))
+		
+		seg_v = torch.cat(x_v, dim=0)
+		seg_h = torch.cat(x_h, dim=0)
+
+		x_v_true = torch.cat(x_v_true, dim=0)
+		x_h_true = torch.cat(x_h_true, dim=0)
+		x_fuse = self.fuse_net(torch.cat([x_v_true, x_h_true], dim=1))
+		x_decoder = self.reduce_decoder(x_in)
+		x_cat = torch.cat([x_fuse, x_decoder], dim=1)
+		x_out = self.project(x_cat)
+		lines_seg = compute_seg(x_out, input_shape, self.ori_clf)
+
+		return seg_v, seg_h, x_out, lines_seg
+
+	def forward(self, inputs):
+
+		input_shape = inputs["image"].shape[-2:]
+		features = super(OrientedNet_2dir_hist_v2, self).forward(inputs, return_intermediate=True)
+		x_decoder = features["decoder"]
+		seg_multi = compute_seg(x_decoder, input_shape, self.classifier)
+
+		x_out = x_decoder
+		true_indices = inputs["angle_range_label"]
+		seg_v = []
+		seg_h = []
+		lines_seg = []
+		for _ in np.arange(self.n_iters):
+			seg_v_iter, seg_h_iter, x_out, lines_seg_iter = self.ori_block(x_out, true_indices, input_shape)
+			seg_v.append(seg_v_iter)
+			seg_h.append(seg_h_iter)
+			lines_seg.append(lines_seg_iter)
+
+		x_v = torch.cat(x_v, dim=0)
+		x_h = torch.cat(x_h, dim=0)
+		lines_seg = torch.cat(lines_seg, dim=0)
+
+		result = OrderedDict()
+		if self.training:
+			result["out"] = OrderedDict()
+			result["out"]["seg"] = seg_multi
+			result["out"]["lines_seg"] = lines_seg
+			result["out"]["seg_v"] = seg_v
+			result["out"]["seg_h"] = seg_h
+		else:
+			result["seg"] = seg_multi
+
+		return result
+
+
+
 
 
 class OrientedConv2d(_ConvNd):
