@@ -170,34 +170,35 @@ def aux_ori_loss_v2(inputs, data):
 @register.attach('hist_loss')
 def hist_loss(inputs, data):
 
-	def _bin_loss(seg, bin_label, weights):
-		loss = []
-		for _seg, _bin_label, _weights in zip(seg, bin_label, weights):
-			loss.append(utils.binary_loss(_seg, _bin_label, _weights))
-		return sum(loss) / len(loss)
+	# def _bin_loss(seg, bin_label, weights):
+	# 	loss = []
+	# 	for _seg, _bin_label, _weights in zip(seg, bin_label, weights):
+	# 		loss.append(utils.binary_loss(_seg.squeeze(), _bin_label.squeeze(), _weights.squeeze()))
+	# 	return sum(loss) / len(loss)
 
-	def _softmax_loss(seg, softmax_label):
-		loss = []
-		for _seg, _softmax_label in zip(seg, softmax_label):
-			loss.append(utils.cross_entropy(_seg.unsqueeze(0), _softmax_label.unsqueeze(0)))
-		return sum(loss) / len(loss)
+	# def _softmax_loss(seg, softmax_label):
+	# 	loss = []
+	# 	for _seg, _softmax_label in zip(seg, softmax_label):
+	# 		loss.append(utils.cross_entropy(_seg.unsqueeze(0), _softmax_label.unsqueeze(0)))
+	# 	return sum(loss) / len(loss)
 
 	seg_v = inputs['seg_v']
 	seg_h = inputs['seg_h']
 	device = seg_v.device
 
-	sofmax_label_v = data["sofmax_label_v"].to(device)
-	sofmax_label_h = data["sofmax_label_h"].to(device)
+	softmax_label_v = data["softmax_label_v"].to(device)
+	softmax_label_h = data["softmax_label_h"].to(device)
 
 	bin_label_v = data["bin_label_v"].to(device)
 	weights_v = data["weights_v"].to(device)
 	bin_label_h = data["bin_label_h"].to(device)
 	weights_h = data["weights_h"].to(device)
 
-	softmax_loss = (_softmax_loss(seg_v, sofmax_label_v) + _softmax_loss(seg_h, sofmax_label_h)) / 2.0
-	bin_loss = (_bin_loss(seg_v, bin_label_v, weights_v) + _bin_loss(seg_h, bin_label_h, weights_h)) / 2.0
-
-	pdb.set_trace() #Comprobar dims etc
+	# softmax_loss = (_softmax_loss(seg_v, softmax_label_v) + _softmax_loss(seg_h, softmax_label_h)) / 2.0
+	# bin_loss = (_bin_loss(seg_v, bin_label_v, weights_v) + _bin_loss(seg_h, bin_label_h, weights_h)) / 2.0
+	softmax_loss = (utils.cross_entropy(seg_v, softmax_label_v) + utils.cross_entropy(seg_h, softmax_label_h)) / 2.0
+	bin_loss = (utils.binary_loss(seg_v, bin_label_v, weights_v) + utils.binary_loss(seg_h, bin_label_h, weights_h)) / 2.0
+	
 	return softmax_loss + bin_loss
 
 

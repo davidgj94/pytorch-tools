@@ -26,7 +26,7 @@ def compute_grids(angle_range, angle_step, kernel_size, grid_size):
 	center = (kernel_size - 1) // 2
 	k = center - (grid_size - 1) // 2
 	
-	angles = np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
+	angles = np.deg2rad(np.arange(min_angle, max_angle + angle_step, angle_step))
 	grids = []
 	for angle in (np.pi/2 - angles).tolist():
 		theta = torch.zeros(1, 2, 3)
@@ -118,10 +118,12 @@ class OrientedNet_2dir(Deeplabv3_ori):
 	def _forward_dir(self, x, grids, idx):
 		return forward_ori(self.ori_net, x, grids[idx]) + forward_ori(self.ori_net, x, grids[idx+1])
 	
-	def forward(self, inputs):
+	def forward(self, inputs, return_intermediate=False):
 
 		input_shape = inputs["image"].shape[-2:]
 		features = super(OrientedNet_2dir, self).forward(inputs, return_intermediate=True)
+		if return_intermediate:
+			return features
 		x_decoder = features["decoder"]
 		seg_multi = compute_seg(x_decoder, input_shape, self.classifier)
 
@@ -248,7 +250,7 @@ class OrientedNet_2dir_concat2(OrientedNet_2dir):
 
 @register.attach("ori_net_2dir_hist")
 class OrientedNet_2dir_hist(OrientedNet_2dir):
-	def __init__(self, n_classes, pretrained_model,
+	def __init__(self, n_classes, pretrained_model, aux=True,
 					grid_size=5, dilation=2, ori_planes=[256, 128, 64, 32],
 					fuse_kernel_size=7, fuse_dilation=2, fuse_planes=[64, 64, 64, 64], 
 					norm_groups=8, freeze_params=True):
@@ -270,11 +272,11 @@ class OrientedNet_2dir_hist(OrientedNet_2dir):
 		self.ori_clf = nn.Conv2d(fuse_planes[-1] + decoder_channels, 1, kernel_size=1, stride=1, bias=False)
 	
 	def plot_hist(self, seg, true_idx):
-
-		for idx, _seg in enumerate(seg):
-			_seg = _seg.cpu().numpy()
+		seg = torch.sigmoid(seg)
+		for idx, _seg in enumerate(seg.squeeze()):
+			_seg = _seg.cpu().detach().numpy()
 			plt.figure()
-			plt.imshow(seg)
+			plt.imshow(_seg)
 			if idx == true_idx:
 				title = "True"
 			else:
@@ -294,18 +296,21 @@ class OrientedNet_2dir_hist(OrientedNet_2dir):
 		x_v = []
 		x_h = []
 		for true_idx, x in zip(inputs["angle_range_label"], x_decoder.unsqueeze(1)):
-			pdb.set_trace() # comprobar dims de x
 			x_v_aux = []
 			x_h_aux = []
-			for idx in np.arange(len(self.grids_v)):
+			for idx in np.arange(len(self.grids_v) - 1):
 				x_v_aux.append(self._forward_dir(x, self.grids_v, idx))
 				x_h_aux.append(self._forward_dir(x, self.grids_h, idx))
 			x_v_aux = torch.cat(x_v_aux, dim=0)
 			x_h_aux = torch.cat(x_h_aux, dim=0)
 
-			pdb.set_trace() #Comprobar dimensiones de compute seg
 			x_v.append(compute_seg(x_v_aux, input_shape, self.aux_clf_ori).squeeze().unsqueeze(0))
 			x_h.append(compute_seg(x_h_aux, input_shape, self.aux_clf_ori).squeeze().unsqueeze(0))
+			# # Pa debuggear
+			# self.plot_hist(x_v[-1], true_idx)
+			# x_v_true_aux = compute_seg(x_v_aux[true_idx].unsqueeze(0), input_shape, self.aux_clf_ori).squeeze().unsqueeze(0)
+			# self.plot_hist(x_v_true_aux, 0)
+			# ##############
 
 			x_v_true.append(x_v_aux[true_idx].unsqueeze(0))
 			x_h_true.append(x_h_aux[true_idx].unsqueeze(0))
@@ -320,18 +325,17 @@ class OrientedNet_2dir_hist(OrientedNet_2dir):
 		x_cat = torch.cat([x_fuse, x_decoder], dim=1)
 		lines_seg = compute_seg(x_cat, input_shape, self.ori_clf)
 
-		pdb.set_trace() #Comprobar con el modelo ya entrenado concat2
-
 		result = OrderedDict()
 		if self.training:
 			result["out"] = OrderedDict()
 			result["out"]["seg"] = seg_multi
+			result["out"]["lines_seg"] = lines_seg
 			result["out"]["seg_v"] = seg_v
 			result["out"]["seg_h"] = seg_h
 		else:
 			result["seg"] = seg_multi
 
-		return result, features, input_shape
+		return result
 
 
 class OrientedConv2d(_ConvNd):

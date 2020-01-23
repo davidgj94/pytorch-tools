@@ -170,6 +170,71 @@ class OriDataset(AngleDetectDataset):
 		return data
 
 
+@register.attach('ori_dataset_hist')
+class OriDatasetHist(OriDataset):
+	def __init__(self, root, id_list_path, augmentations=[], only_APR=True):
+		super(OriDatasetHist, self).__init__(root, id_list_path, augmentations=augmentations, only_APR=only_APR)
+	
+	def create_bin_label(self, mask, idx, _weights):
+
+		n_intervals = len(self.rot_angles) - 1
+
+		bin_label = np.zeros((n_intervals,) + mask.shape, dtype=np.float32)
+		bin_label[idx] = mask
+
+		inv_mask = (mask < 1.0).astype(np.float32)
+		weights = np.stack([inv_mask] * n_intervals, axis=0)
+		weights[idx] = np.ones(mask.shape, dtype=np.float32)
+		weights *= _weights
+
+		return bin_label, weights
+	
+	def debug_bin_label(self, bin_label, true_idx):
+
+		for idx, _bin_label in enumerate(bin_label):
+			plt.figure()
+			plt.imshow(_bin_label)
+			if idx == true_idx:
+				title = "True"
+			else:
+				title = "False"
+			plt.title(title)
+		plt.show()
+
+
+	def create_softmax_label(self, mask, idx):
+		softmax_label = 255 * np.ones(mask.shape, dtype=np.int64)
+		softmax_label[mask > 0.5] = idx
+		return softmax_label
+
+	def __getitem__(self, index):
+		data = super(OriDatasetHist, self).__getitem__(index)
+		mask_v = data["mask_v"]
+		mask_h = data["mask_h"]
+		weights = data["weights"]
+		idx = data["angle_range_label"]
+
+		bin_label_v, weights_v = self.create_bin_label(mask_v, idx, weights)
+		# self.debug_bin_label(bin_label_v, idx)
+		# self.debug_bin_label(weights_v, idx)
+		bin_label_h, weights_h = self.create_bin_label(mask_h, idx, weights)
+		# self.debug_bin_label(bin_label_h, idx)
+		# self.debug_bin_label(weights_h, idx)
+
+		softmax_label_v = self.create_softmax_label(mask_v, idx)
+		softmax_label_h = self.create_softmax_label(mask_h, idx)
+
+		# plt.figure()
+		# plt.imshow(softmax_label_v)
+		# plt.figure()
+		# plt.imshow(softmax_label_h)
+		# plt.show()
+
+		data.update(bin_label_v=bin_label_v, weights_v=weights_v, 
+					bin_label_h=bin_label_h, weights_h=weights_h,
+					softmax_label_v=softmax_label_v, softmax_label_h=softmax_label_h)
+		
+		return data
 
 
 
