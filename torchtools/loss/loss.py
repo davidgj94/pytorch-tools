@@ -198,7 +198,9 @@ def hist_loss(inputs, data):
 	# bin_loss = (_bin_loss(seg_v, bin_label_v, weights_v) + _bin_loss(seg_h, bin_label_h, weights_h)) / 2.0
 	softmax_loss = (utils.cross_entropy(seg_v, softmax_label_v) + utils.cross_entropy(seg_h, softmax_label_h)) / 2.0
 	bin_loss = (utils.binary_loss(seg_v, bin_label_v, weights_v) + utils.binary_loss(seg_h, bin_label_h, weights_h)) / 2.0
-	
+
 	return softmax_loss + bin_loss
+
+
 
 

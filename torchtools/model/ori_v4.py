@@ -145,6 +145,8 @@ class OrientedNet_2dir(Deeplabv3_ori):
 		x_h = torch.cat(x_h, dim=0)
 		features["x_h"] = x_h
 
+
+
 		result = OrderedDict()
 		if self.training:
 			result["out"] = OrderedDict()
@@ -276,7 +278,6 @@ class OrientedNet_2dir_hist(OrientedNet_2dir):
 		self.ori_clf = nn.Conv2d(fuse_planes[-1] + decoder_channels, 1, kernel_size=1, stride=1, bias=False)
 	
 	def plot_hist(self, seg, true_idx):
-		seg = torch.sigmoid(seg)
 		for idx, _seg in enumerate(seg.squeeze()):
 			_seg = _seg.cpu().detach().numpy()
 			plt.figure()
@@ -287,6 +288,20 @@ class OrientedNet_2dir_hist(OrientedNet_2dir):
 				title = "False"
 			plt.title(title)
 		plt.show()
+	
+	def compute_hist(self, seg_v, seg_h, true_indices=None):
+		seg = torch.sigmoid(seg_v) + torch.sigmoid(seg_h)
+		seg = torch.clamp(seg, min=0.0, max=1.0)
+		if true_indices is not None:
+			for true_idx, _seg in zip(true_indices, seg):
+				self.plot_hist(_seg, true_idx)
+		n_intervals = len(self.grids_v) - 1
+		bs = seg.shape[0]
+		seg = seg.view(bs, n_intervals, -1).sum(2)
+		hist = seg / seg.sum(1).unsqueeze(1)
+		return hist
+
+
 	
 	def forward(self, inputs):
 
@@ -337,7 +352,8 @@ class OrientedNet_2dir_hist(OrientedNet_2dir):
 			result["out"]["seg_v"] = seg_v
 			result["out"]["seg_h"] = seg_h
 		else:
-			result["seg"] = seg_multi
+			hist = self.compute_hist(seg_v, seg_h, true_indices=None)
+			result["hist"] = hist.squeeze()
 
 		return result
 
@@ -444,9 +460,6 @@ class OrientedNet_2dir_hist_v2(OrientedNet_2dir):
 			result["seg"] = seg_multi
 
 		return result
-
-
-
 
 
 class OrientedConv2d(_ConvNd):

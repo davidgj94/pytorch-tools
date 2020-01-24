@@ -17,12 +17,10 @@ class AccuracyAngleRange(object):
         self.labels = []
 
     def __call__(self, preds, data):
-        preds = preds[self.pred_name]
-        labels = data[self.label_name].numpy().tolist()
-        for _pred, _label in zip(preds, labels):
-            _pred = np.argmax(_pred.cpu().numpy())
-            self.preds.append(_pred)
-            self.labels.append(_label)
+        preds = torch.argmax(preds[self.pred_name]).item()
+        labels = data[self.label_name].item()
+        self.preds.append(preds)
+        self.labels.append(labels)
 
     def value(self,):
         return np.mean(np.array(self.preds) == np.array(self.labels))
