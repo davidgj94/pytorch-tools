@@ -122,5 +122,5 @@ if __name__ == "__main__":
 		metric = RunningScore(4, pred_name='seg', label_name='mask_test')
 		angle_metric = AccuracyAngleRange(pred_name="hist", label_name="angle_range_label")
 		vis_saver = SegVisSaver(4, pred_name='seg', label_name='vis_image')
-		result_saver = ResultsSaver(result_dir, metrics=dict(angle=angle_metric))
+		result_saver = ResultsSaver(result_dir, metrics=dict(iou=metric), vis_savers=dict(vis=vis_saver))
 		validate(val_model, val_dataloader, result_saver)
