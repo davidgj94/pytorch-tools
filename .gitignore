@@ -1,3 +1,5 @@
 test/
 *.pyc
-
+checkpoint/
+list/
+result/

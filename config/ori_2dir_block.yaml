@@ -1,0 +1,77 @@
+num_classes: 4
+
+# Training Configuration
+training:
+
+    batch_size: 2
+    display_iters: 1
+    iter_size: 5
+    learning_rate: 0.001
+    init: 'epoch_8.pth'
+
+    # Dataset Configuration
+    dataset:
+        name: 'ori_dataset'
+        params:
+            only_APR: True
+            root: '/home/davidgj/projects/APR_TAX_RWY'
+            augmentations:
+                - pca:
+                    sigma_pca: 0.05   
+                - random_flip:
+                - rotate:
+                    sigma_angle: 17.0
+                    w: 833
+                    h: 417
+
+    # Model Configuration
+    model:
+        name: 'ori_net_2dir_block'
+        stride: 8
+        params:
+          fuse_kernel_size: 7
+          fuse_dilation: 2
+          grid_size: 7
+          dilation: 2
+          decoder_channels: 64
+          aux: True
+          n_iters: 1
+    loss:
+       - ori_block_loss: 1.0
+
+# Validation Configuration
+validation:
+
+    batch_size: 1
+    val_epochs: 3
+
+    val_expers:
+
+        - name: "line_seg"
+          # Dataset Configuration
+          dataset:
+            name: 'ori_dataset'
+            params:
+                root: '/home/davidgj/projects/APR_TAX_RWY'
+                augmentations:
+                    - pca:
+                        sigma_pca: 0.05   
+                    - random_flip:
+                    - rotate:
+                        sigma_angle: 17.0
+                        w: 833
+                        h: 417
+
+          # Model Configuration
+          model:
+            name: 'ori_net_2dir_block'
+            stride: 8
+            params:
+              fuse_kernel_size: 7
+              fuse_dilation: 3
+              grid_size: 7
+              dilation: 2
+              ori_planes: [256, 128, 128, 64]
+              fuse_planes: [128, 128, 128, 128]
+              aux: True
+              n_iters: 2
