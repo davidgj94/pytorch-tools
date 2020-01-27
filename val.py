@@ -57,12 +57,8 @@ def get_dataloader(id_list_path, dataset_cfg, batch_size, shuffle=True):
 
 def parse_args():
 	parser = ArgumentParser()
-	parser.add_argument('--config', type=str, required=True)
-	parser.add_argument('-train', dest='train', action='store_true')
-	parser.add_argument('--epoch', type=int)
-	parser.set_defaults(train=False)
-	parser.add_argument('-cpu', dest='use_cpu', action='store_true')
-	parser.set_defaults(use_cpu=False)
+	parser.add_argument('--config', type=str, required=True, nargs='+')
+	parser.add_argument('--parts', type=int, required=True, nargs='+')
 	return parser.parse_args()
 
 
@@ -82,27 +78,26 @@ def validate(val_model, val_loader, result_saver):
 		
 	result_saver.save_metrics()
 
+def main(config_path, part, epoch=None, val=True, use_cpu=False):
 
-if __name__ == "__main__":
+	id_list_path = os.path.join('list', 'partition_{}'.format(part), 'val.txt' if val else 'train.txt')
+	exper_name = os.path.basename(config_path).split(".")[0]
+	root_checkpoint_dir = os.path.join('checkpoint', 'partition_{}'.format(part))
+	checkpoint_dir = os.path.join(root_checkpoint_dir, exper_name)
 
-	args = parse_args()
-
-	num_classes, training_cfg, val_cfg = utils.get_cfgs(args.config)
-	device = torch.device("cuda:0" if torch.cuda.is_available() and not args.use_cpu else "cpu")
+	num_classes, training_cfg, val_cfg = utils.get_cfgs(config_path)
+	device = torch.device("cuda:0" if torch.cuda.is_available() and not use_cpu else "cpu")
 
 	model_train = get_model(num_classes, training_cfg["model"]).to(device)
 
-	id_list_path = os.path.join('test', 'list', '{}.txt').format('train' if args.train else 'val')
 	val_expers = {}
 	for _val_exper in val_cfg['val_expers']:
 		model_val = get_model(num_classes, _val_exper["model"]).to(device)
 		val_dataloader = get_dataloader(id_list_path, _val_exper['dataset'], val_cfg['batch_size'], shuffle=False)
 		val_expers[_val_exper['name']] = dict(model_val=model_val, val_dataloader=val_dataloader)
 
-	exper_name = os.path.basename(args.config).split(".")[0]
-	checkpoint_dir = os.path.join('test', 'checkpoint', exper_name)
-	if args.epoch is not None:
-		last_checkpoint_path = os.path.join(checkpoint_dir, "epoch_{}.pth".format(args.epoch))
+	if epoch is not None:
+		last_checkpoint_path = os.path.join(checkpoint_dir, "epoch_{}.pth".format(epoch))
 	else:
 		last_checkpoint_path = get_last_checkpoint(checkpoint_dir)
 
@@ -114,13 +109,21 @@ if __name__ == "__main__":
 	else:
 		current_epoch = 0
 
-	result_dir = os.path.join('test', 'results', exper_name, 'epoch_{}'.format(current_epoch))
+	result_dir = os.path.join('results', 'partition_{}'.format(part), exper_name, 'epoch_{}'.format(current_epoch))
 	for val_exper_name, val_exper in val_expers.items():
 		print('>> {}'.format(val_exper_name))
 		val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
 		val_model.load_state_dict(model_train.state_dict(), strict=False)
 		metric = RunningScore(4, pred_name='seg', label_name='mask_test')
-		angle_metric = AccuracyAngleRange(pred_name="hist", label_name="angle_range_label")
 		vis_saver = SegVisSaver(4, pred_name='seg', label_name='vis_image')
 		result_saver = ResultsSaver(result_dir, metrics=dict(iou=metric), vis_savers=dict(vis=vis_saver))
 		validate(val_model, val_dataloader, result_saver)
+
+
+
+if __name__ == "__main__":
+
+	args = parse_args()
+	for part in args.parts:
+		for config_path in args.config:
+			main(config_path, part)

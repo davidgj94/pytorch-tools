@@ -67,6 +67,8 @@ validation:
             name: 'ori_net_2dir_concat2'
             stride: 8
             params:
+              fuse_kernel_size: 7
+              fuse_dilation: 2
               grid_size: 7
               dilation: 2
               aux: True

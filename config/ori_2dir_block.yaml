@@ -68,10 +68,9 @@ validation:
             stride: 8
             params:
               fuse_kernel_size: 7
-              fuse_dilation: 3
+              fuse_dilation: 2
               grid_size: 7
               dilation: 2
-              ori_planes: [256, 128, 128, 64]
-              fuse_planes: [128, 128, 128, 128]
+              decoder_channels: 64
               aux: True
-              n_iters: 2
+              n_iters: 1

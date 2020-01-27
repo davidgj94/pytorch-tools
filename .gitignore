@@ -2,4 +2,4 @@ test/
 *.pyc
 checkpoint/
 list/
-result/
+results/
