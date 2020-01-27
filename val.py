@@ -115,8 +115,10 @@ def main(config_path, part, epoch=None, val=True, use_cpu=False):
 		val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
 		val_model.load_state_dict(model_train.state_dict(), strict=False)
 		metric = RunningScore(4, pred_name='seg', label_name='mask_test')
+		angle_metric = AccuracyAngleRange(pred_name="hist", label_name="angle_range_label")
 		vis_saver = SegVisSaver(4, pred_name='seg', label_name='vis_image')
-		result_saver = ResultsSaver(result_dir, metrics=dict(iou=metric), vis_savers=dict(vis=vis_saver))
+		# result_saver = ResultsSaver(result_dir, metrics=dict(iou=metric), vis_savers=dict(vis=vis_saver))
+		result_saver = ResultsSaver(result_dir, metrics=dict(angle_metric=angle_metric))
 		validate(val_model, val_dataloader, result_saver)
 
 

@@ -42,6 +42,25 @@ def compute_grids(angle_range, angle_step, kernel_size, grid_size):
 def padding(dilation, kernel_size):
 	return dilation * (kernel_size - 1) // 2
 
+def gabor_bank(kernel_size, min_angle=-45.0, max_angle=45.0, angle_step=15.0):
+
+	angles = np.deg2rad(np.arange(min_angle, max_angle + 90.0 + angle_step, angle_step))
+	filter_bank = []
+	for angle in (angles + np.pi/2).tolist():
+			filter_weights = gabor(angle, kernel_size=kernel_size) / kernel_size
+			conv_layer = nn.Conv2d(1, 1, 
+									kernel_size=kernel_size, 
+									stride=1, 
+									bias=False,
+									padding=int((kernel_size  - 1) // 2))
+			filter_weights = torch.FloatTensor(filter_weights).view_as(conv_layer.weight.data)
+			conv_layer.weight =  nn.Parameter(filter_weights, requires_grad=False)
+			filter_bank.append(conv_layer)
+	filter_bank = nn.ModuleList(filter_bank)
+
+	n_angles = (len(angles) - 1) // 2 + 1
+	return filter_bank[:n_angles], filter_bank[n_angles-1:]
+
 
 def create_convnet(conv_layer, planes, kernel_size, padding, dilation, groups):
 
@@ -236,10 +255,49 @@ class OrientedNet_2dir_concat2(OrientedNet_2dir):
 		self.fuse_net = create_convnet(nn.Conv2d, fuse_planes, fuse_kernel_size, fuse_padding, fuse_dilation, norm_groups)
 
 		self.ori_clf = nn.Conv2d(fuse_planes[-1] + decoder_channels, 1, kernel_size=1, stride=1, bias=False)
+
+		self.gabor_bank_v, self.gabor_bank_h = gabor_bank(35)
+
+	def estimate_angle(self, x_decoder):
+
+		def apply_gabor_bank(_gabor_bank, x):
+			res = []
+			for idx, _x in enumerate(x.unsqueeze(1)):
+				_x0 = _gabor_bank[idx](_x)
+				_x1 = _gabor_bank[idx+1](_x)
+				res.append(F.relu(_x0) + F.relu(_x1))
+			return torch.cat(res, dim=0).squeeze(1)
+
+		def plot_hist(seg_v, seg_h):
+			seg = torch.clamp(seg_v + seg_h, min=0.0, max=1.0)
+
+			for _seg in seg:
+				plt.figure()
+				plt.imshow(_seg.cpu())
+			plt.show()
+
+		x_v, x_h = [], []
+		n_intervals = len(self.grids_v) - 1
+		for idx in np.arange(n_intervals):
+			x_v.append(self._forward_dir(x_decoder, self.grids_v, idx))
+			x_h.append(self._forward_dir(x_decoder, self.grids_h, idx))
+		x_v = torch.cat(x_v, dim=0)
+		x_h = torch.cat(x_h, dim=0)
+		
+		seg_v = apply_gabor_bank(self.gabor_bank_v, self.aux_clf_ori(x_v))
+		seg_h = apply_gabor_bank(self.gabor_bank_h, self.aux_clf_ori(x_h))
+		hist = (seg_v + seg_h).view(n_intervals, -1).sum(1)
+
+		return hist
+
 		
 	def forward(self, inputs):
 		
 		result, features, input_shape = super(OrientedNet_2dir_concat2, self).forward(inputs)
+		if not self.training:
+			hist = self.estimate_angle(features["decoder"])
+			result["hist"] = hist
+			return result
 		x_v, x_h = features["x_v"], features["x_h"]
 		x_fuse = self.fuse_net(torch.cat([x_v, x_h], dim=1))
 		x_decoder = self.reduce_decoder(features["decoder"])
