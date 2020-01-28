@@ -78,7 +78,8 @@ def create_convnet(conv_layer, planes, kernel_size, padding, dilation, groups):
 		_conv = conv_layer(in_planes, out_planes, 
 								kernel_size=kernel_size, 
 								padding=padding, 
-								dilation=dilation,)
+								dilation=dilation,
+								bias=False,)
 		_init_conv(_conv)
 		norm = nn.GroupNorm(groups, out_planes)
 		relu = nn.ReLU()
@@ -103,6 +104,34 @@ class Deeplabv3_ori(Deeplabv3Plus):
 	def freeze_parameters(self):
 		for param in self.parameters():
 			param.requires_grad = False
+
+
+@register.attach('baseline')
+class OrientedNet_Baseline(Deeplabv3_ori):
+	def __init__(self, n_classes, pretrained_model,
+					kernel_size=7, dilation=2, planes=[256, 128, 64, 64, 64],
+					freeze_params=True, norm_groups=8):
+		super(OrientedNet_Baseline, self).__init__(n_classes, pretrained_model, freeze_params=freeze_params)
+		self.baseline_net = create_convnet(nn.Conv2d, planes, kernel_size, padding(dilation, kernel_size), dilation, norm_groups)
+		self.line_clf = nn.Conv2d(planes[-1], 1, kernel_size=1, stride=1, bias=False)
+		init_conv(self.line_clf)
+	
+	def forward(self, inputs):
+		input_shape = inputs["image"].shape[-2:]
+		features = super(OrientedNet_Baseline, self).forward(inputs, return_intermediate=True)
+		baseline_out = self.baseline_net(features["decoder"])
+		lines_seg = compute_seg(baseline_out, input_shape, self.line_clf)
+
+		result = OrderedDict()
+		if self.training:
+			result['out'] = OrderedDict()
+			result["out"]["lines_seg"] = lines_seg
+		else:
+			multi_seg = compute_seg(features["decoder"], input_shape, self.classifier)
+			_, result["seg"] = predict(multi_seg, lines_seg.squeeze())
+			result["seg"] = result["seg"].cpu()
+
+		return result
 
 
 class OrientedNet_2dir(Deeplabv3_ori):
