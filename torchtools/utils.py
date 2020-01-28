@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 # from functools import partial
-from save import makedir
+from .save import makedir
 
 
 # def list_to_od(_list):
@@ -105,7 +105,7 @@ def save_heatmaps(segs, save_path):
 
 	cmap = plt.get_cmap('viridis')
 	segs -= segs.min()
-	segs *= (255 / segs.max())
+	segs /= segs.max()
 	for idx, seg in enumerate(segs):
 		heat_save_path = os.path.join(heatmaps_save_dir, 'heat_{}.png').format(idx)
 		colored_seg = (cmap(seg.numpy())[:, :, :3] * 255).astype(np.uint8)
