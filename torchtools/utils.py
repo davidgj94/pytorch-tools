@@ -87,7 +87,13 @@ def check_gradient(name, tensor_stats=False):
 
 	return _check_gradient
 
-def save_heatmaps(segs, save_path):
+def save_heatmaps(segs, save_path, v_min=None, v_max=None):
+
+	if v_min is not None:
+		segs = torch.clamp(segs, min=v_min)
+	
+	if v_max is not None:
+		segs = torch.clamp(segs, max=v_max)
 
 	cbar_save_path = os.path.join(save_path, 'cbar.png')
 	heatmaps_save_dir = os.path.join(save_path, 'heats')
