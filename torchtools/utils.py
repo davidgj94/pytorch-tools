@@ -3,7 +3,11 @@ import pdb
 from collections import OrderedDict
 import os
 import torch
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
 # from functools import partial
+from save import makedir
 
 
 # def list_to_od(_list):
@@ -82,6 +86,33 @@ def check_gradient(name, tensor_stats=False):
 		return inner_func
 
 	return _check_gradient
+
+def save_heatmaps(segs, save_path):
+
+	cbar_save_path = os.path.join(save_path, 'cbar.png')
+	heatmaps_save_dir = os.path.join(save_path, 'heats')
+	makedir(heatmaps_save_dir)
+
+	min_value = segs.min()
+	max_value = segs.max()
+	dummy_seg = np.random.uniform(low=min_value, high=max_value, size=(100, 100))
+	X, Y = np.meshgrid(np.linspace(0, 1, 100), np.linspace(0, 1, 100))
+	mpb = plt.pcolormesh(X,Y,dummy_seg,cmap='viridis')
+	_,ax = plt.subplots()
+	plt.colorbar(mpb,ax=ax)
+	ax.remove()
+	plt.savefig(cbar_save_path,bbox_inches='tight')
+
+	cmap = plt.get_cmap('viridis')
+	segs -= segs.min()
+	segs *= (255 / segs.max())
+	for idx, seg in enumerate(segs):
+		heat_save_path = os.path.join(heatmaps_save_dir, 'heat_{}.png').format(idx)
+		colored_seg = (cmap(seg.numpy())[:, :, :3] * 255).astype(np.uint8)
+		Image.fromarray(colored_seg).save(heat_save_path)
+	
+
+
 
 
 

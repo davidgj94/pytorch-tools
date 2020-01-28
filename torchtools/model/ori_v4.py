@@ -297,8 +297,7 @@ class OrientedNet_2dir_concat2(OrientedNet_2dir):
 				res.append(F.relu(_x0) + F.relu(_x1))
 			return torch.cat(res, dim=0).squeeze(1)
 
-		def plot_hist(seg_v, seg_h):
-			seg = torch.clamp(seg_v + seg_h, min=0.0, max=1.0)
+		def plot_hist(seg):
 
 			for _seg in seg:
 				plt.figure()
@@ -313,8 +312,9 @@ class OrientedNet_2dir_concat2(OrientedNet_2dir):
 		x_v = torch.cat(x_v, dim=0)
 		x_h = torch.cat(x_h, dim=0)
 		
-		seg_v = apply_gabor_bank(self.gabor_bank_v, self.aux_clf_ori(x_v))
-		seg_h = apply_gabor_bank(self.gabor_bank_h, self.aux_clf_ori(x_h))
+		seg_v = F.relu(self.aux_clf_ori(x_v)).squeeze(1)
+		seg_h = F.relu(self.aux_clf_ori(x_h)).squeeze(1)
+
 		hist = (seg_v + seg_h).view(n_intervals, -1).sum(1)
 
 		return hist
