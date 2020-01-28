@@ -12,6 +12,7 @@ from torch.nn.modules.utils import _pair
 from .register import register
 from .gabor import gabor
 from .angle_net import predict
+from torchtools.utils import save_heatmaps
 
 
 def compute_seg(x, output_shape, classifier):
@@ -312,9 +313,10 @@ class OrientedNet_2dir_concat2(OrientedNet_2dir):
 		x_v = torch.cat(x_v, dim=0)
 		x_h = torch.cat(x_h, dim=0)
 		
-		seg_v = F.relu(self.aux_clf_ori(x_v)).squeeze(1)
-		seg_h = F.relu(self.aux_clf_ori(x_h)).squeeze(1)
-
+		# seg_v = F.relu(self.aux_clf_ori(x_v)).squeeze(1)
+		# seg_h = F.relu(self.aux_clf_ori(x_h)).squeeze(1)
+		seg_v = apply_gabor_bank(self.gabor_bank_v, self.aux_clf_ori(x_v))
+		seg_h = apply_gabor_bank(self.gabor_bank_h, self.aux_clf_ori(x_h))
 		hist = (seg_v + seg_h).view(n_intervals, -1).sum(1)
 
 		return hist
@@ -323,10 +325,14 @@ class OrientedNet_2dir_concat2(OrientedNet_2dir):
 	def forward(self, inputs):
 		
 		result, features, input_shape = super(OrientedNet_2dir_concat2, self).forward(inputs)
-		if not self.training:
-			hist = self.estimate_angle(features["decoder"])
-			result["hist"] = hist
-			return result
+		# if not self.training:
+		# 	hist = self.estimate_angle(features["decoder"])
+		# 	result["hist"] = hist
+		# 	if torch.argmax(hist).item() != inputs["angle_range_label"].item():
+		# 		print("pred: {}".format(torch.argmax(hist).item()))
+		# 		print("true: {}".format(inputs["angle_range_label"].item()))
+		# 		pdb.set_trace()
+		# 	return result
 		x_v, x_h = features["x_v"], features["x_h"]
 		x_fuse = self.fuse_net(torch.cat([x_v, x_h], dim=1))
 		x_decoder = self.reduce_decoder(features["decoder"])
