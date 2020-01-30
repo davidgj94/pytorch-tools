@@ -169,8 +169,10 @@ def aux_ori_loss_v2(inputs, data):
 @register.attach('ori_block_loss')
 def ori_block_loss(inputs, data):
 
-	def multiply(list1, list2):
-		return [el1*el2 for el1, el2 in zip(list1, list2)]
+	def weight_losses(losses):
+		K = len(losses)
+		weight_factors = (np.arange(1,K+1) / np.arange(1,K+1).sum()).tolist()
+		return sum([_loss * _weight for _loss, _weight in zip(losses, weight_factors)])
 
 	lines_seg = inputs['lines_seg'].transpose(0,1)
 	seg_v = inputs['seg_v'].transpose(0,1)
@@ -183,22 +185,16 @@ def ori_block_loss(inputs, data):
 	label_h = data['mask_h'].to(device)
 
 	line_seg_loss = []
-	aux_loss = []
-	for _lines_seg, _seg_v, _seg_h in zip(lines_seg, seg_v, seg_h):
+	for _lines_seg in lines_seg:
 		_lines_seg_loss = utils.binary_loss(_lines_seg, label, weights)
-		_aux_loss = 0.5 * (utils.binary_loss(_seg_v, label_v, weights) + utils.binary_loss(_seg_h, label_h, weights))
-
 		line_seg_loss.append(_lines_seg_loss)
+
+	aux_loss = []
+	for _seg_v, _seg_h in zip(seg_v, seg_h):
+		_aux_loss = 0.5 * (utils.binary_loss(_seg_v, label_v, weights) + utils.binary_loss(_seg_h, label_h, weights))
 		aux_loss.append(_aux_loss)
 	
-	K = lines_seg.shape[0]
-	weight_factor = (np.arange(1,K+1) / np.arange(1,K+1).sum()).tolist()
-	line_seg_loss = sum(multiply(line_seg_loss, weight_factor))
-	aux_loss = sum(multiply(aux_loss, weight_factor))
-
-	return line_seg_loss + 0.4 * aux_loss
-
-
+	return weight_losses(line_seg_loss) + 0.4 * weight_losses(aux_loss)
 
 
 @register.attach('hist_loss')

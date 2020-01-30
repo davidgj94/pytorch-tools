@@ -26,17 +26,23 @@ training:
 
     # Model Configuration
     model:
-        name: 'baseline'
+        name: 'ori_net_2dir_block_v2'
         stride: 8
-
+        params:
+          fuse_kernel_size: 7
+          fuse_dilation: 2
+          grid_size: 7
+          dilation: 2
+          aux: True
+          n_iters: 2
     loss:
-       - lines_binary_seg: 1.0
+       - ori_block_loss: 1.0
 
 # Validation Configuration
 validation:
 
     batch_size: 1
-    val_epochs: 7
+    val_epochs: 2
 
     val_expers:
 
@@ -57,5 +63,12 @@ validation:
 
           # Model Configuration
           model:
-            name: 'baseline'
+            name: 'ori_net_2dir_block_v2'
             stride: 8
+            params:
+              fuse_kernel_size: 7
+              fuse_dilation: 2
+              grid_size: 7
+              dilation: 2
+              aux: True
+              n_iters: 2
