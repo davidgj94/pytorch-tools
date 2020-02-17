@@ -165,7 +165,7 @@ class RoadsNet(Deeplabv3_Roads):
 
 
 	def trainable_parameters(self, base_lr, alfa=10):
-		
+
 		params_groups_2 = list(super(RoadsNet, self).trainable_parameters())
 
 		params_groups_1 = []
@@ -191,7 +191,7 @@ class RoadsNet(Deeplabv3_Roads):
 
 		# Se asume batch size de 1
 		x_ori = []
-		for idx in np.arange(self.n_angles):
+		for idx in np.arange(self.n_angles-1):
 			x_ori.append(self._forward_dir(x_decoder, idx))
 		
 		if (not self.training) and (self.aux_ori_clf is not None):
@@ -303,7 +303,7 @@ class OrientedConv2d(_ConvNd):
 	def forward(self, input_features):
 		return F.conv2d(input_features, self.rotate_weight(), self.bias, self.stride,
 						self.padding, self.dilation, self.groups)
-  
+
 	def reset_parameters(self):
 		nn.init.xavier_normal_(self.weight)
 		if self.bias is not None:
