@@ -25,21 +25,18 @@ def parse_args():
 	parser.add_argument('--config', type=str, required=True)
 	return parser.parse_args()
 
-def _test(dataset_params):
-	id_list_path = os.path.join('test', 'list', 'train.txt')
-	dataset = get_dataset("ori_dataset")(**dataset_params)
+def _test(dataset, model):
 	loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0)
-	model = get_model(4, dict(name="test_ori_v4", stride=16))
 	for _iter, data in tqdm(enumerate(loader), total=len(loader), dynamic_ncols=True):
-		idx = data['angle_range_label'].item()
-		model(idx)
-		plt.show()
+		model(data)
 
 if __name__ == "__main__":
 	args = parse_args()
 	num_classes, training_cfg, val_cfg = utils.get_cfgs(args.config)
 	dataset_params = training_cfg["dataset"]["params"]
-	id_list_path = os.path.join('test', 'list', 'train.txt')
+	id_list_path = os.path.join('list', 'partition_0', 'train.txt')
 	dataset_params.update(id_list_path=id_list_path)
-	_test(dataset_params)
+	dataset = get_dataset(training_cfg["dataset"]['name'])(**dataset_params)
+	model = get_model(num_classes, training_cfg['model'])
+	_test(dataset, model)
 	print("Done")
