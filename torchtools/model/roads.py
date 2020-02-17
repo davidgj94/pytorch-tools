@@ -164,6 +164,25 @@ class RoadsNet(Deeplabv3_Roads):
 				module.eval()
 
 
+	def trainable_parameters(self, base_lr, alfa=10):
+		
+		params_groups_2 = list(super(RoadsNet, self).trainable_parameters())
+
+		params_groups_1 = []
+		params_groups_1 += list(self.ori_net.parameters())
+		params_groups_1 += list(self.fuse_net.parameters())
+		params_groups_1 += list(self.reduce_decoder.parameters())
+		if self.aux_ori_clf is not None:
+			params_groups_1 += list(self.aux_ori_clf.parameters())
+		if self.aux_junction_clf is not None:
+			params_groups_1 += list(self.aux_junction_clf.parameters())
+
+		total_params_groups = [{'params': iter(params_groups_1), 'lr': base_lr}]
+		if len(params_groups_2) > 0:
+			total_params_groups += [{'params': iter(params_groups_2), 'lr': base_lr / alfa}]
+		return total_params_groups
+
+
 	def forward(self, inputs, return_intermediate=False):
 
 		input_shape = inputs["image"].shape[-2:]
