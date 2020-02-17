@@ -33,7 +33,7 @@ def train(train_model, train_dataloader, criterion, optimizer, training_cfg):
 		with torch.set_grad_enabled(True):
 
 			outputs = train_model(data)
-			loss = criterion(outputs['out'], data) / iter_size
+			loss = criterion(outputs, data) / iter_size
 			loss.backward()
 			running_loss.update(loss.item() * iter_size, n=train_dataloader.batch_size)
 
