@@ -33,14 +33,8 @@ def train(train_model, train_dataloader, criterion, optimizer, training_cfg):
 		with torch.set_grad_enabled(True):
 
 			outputs = train_model(data)
-
-			# aux_loss = 0.0
-			# if 'aux' in outputs:
-			# 	aux_loss = criterion(outputs['aux'], data)
-			# loss = (criterion(outputs['out'], data) + 0.4 * aux_loss) / iter_size
 			loss = criterion(outputs['out'], data) / iter_size
 			loss.backward()
-			
 			running_loss.update(loss.item() * iter_size, n=train_dataloader.batch_size)
 
 			if _iter > 0 and _iter % iter_size == 0:
