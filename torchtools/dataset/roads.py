@@ -26,14 +26,18 @@ class BaseDataset(data.Dataset):
 	"""
 	Base dataset class
 	"""
-	def __init__(self, root, id_list_path, augmentations=[], train_junctions=False):
+	def __init__(self, root, id_list_path, augmentations=[], training=True, treshold=0.76):
 
-		self.root = root
 		self.id_list = np.loadtxt(id_list_path, dtype=str)
 		self.mean = [0.485, 0.456, 0.406]
 		self.var = [0.229, 0.224, 0.225]
 		self.augmentations = Compose(augmentations)
-		self.train_junctions = train_junctions
+		self.training = training
+		if self.training:
+			self.root = os.path.join(root, 'train')
+		else:
+			self.root = os.path.join(root, 'val')
+		self.treshold = treshold
 
 	def _load_data(self, idx):
 		"""
@@ -41,11 +45,11 @@ class BaseDataset(data.Dataset):
 		"""
 		image_id = self.id_list[idx] + '.png'
 		img_path = os.path.join(self.root, "images", image_id)
-		label_path = os.path.join(self.root, "label", image_id)
+		label_path = os.path.join(self.root, "gt", image_id)
 
 		img = np.asarray(imread(img_path))
-		pdb.set_trace() # ver si hay que quedarse con canal
-		label = np.asarray(imread(label_path))
+		label = (np.asarray(imread(label_path)) / 255.0) > self.treshold
+		label = label.astype(np.float32)
 		return image_id, img, label
 
 
@@ -61,7 +65,7 @@ class BaseDataset(data.Dataset):
 
 		data = dict(image_id=image_id, image=image, label=label)
 
-		if self.train_junctions:
+		if self.training:
 			junction_gt, junction_weights = compute_junction_gt(label)
 			data.update(junction_gt=junction_gt, junction_weights=junction_weights)
 		

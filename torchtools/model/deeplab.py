@@ -194,3 +194,10 @@ def init_conv(m):
 	if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
 		nn.init.xavier_uniform_(m.weight)
 
+@register.attach('dummy')
+class Dummy:
+	def __init__(self, n_classes, pretrained_model):
+		print("Dummy")
+	def __call__(self, inputs):
+		return 0.0
+
