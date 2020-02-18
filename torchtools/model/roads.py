@@ -35,7 +35,7 @@ def compute_grids(angle_range, angle_step, kernel_size, grid_size):
 	min_angle, max_angle = angle_range
 	angles = np.deg2rad(np.arange(min_angle, max_angle + angle_step, angle_step))
 	grids = []
-	for angle in (np.pi/2 - angles).tolist():
+	for angle in (-1.0*angles).tolist():
 		grid = _compute_grid(angle)
 		grids.append(grid)
 
@@ -224,7 +224,7 @@ class OrientedNetTest(RoadsNet):
 	def __init__(self, n_classes, pretrained_model, aux=False):
 
 		grid_size = 25
-		kernel_size = grid_size + (grid_size - 1) * 2
+		kernel_size = grid_size + 8
 		ori_planes=[256, 1]
 
 		super(OrientedNetTest, self).__init__(n_classes, 
@@ -249,18 +249,11 @@ class OrientedNetTest(RoadsNet):
 
 	def forward(self, inputs):
 
-		ori_weights = inputs['ori_weights']
-		for idx, weights in enumerate(ori_weights):
-			weights = weights.numpy()
-			if not np.all(weights < 1.0):
-				rotated_filter = self.get_weight(idx)[0,0].numpy()
-				plt.figure()
-				plt.imshow(rotated_filter)
-				plt.title("{}".format(self.rot_angles[idx]))
-				rotated_filter = self.get_weight(idx+1)[0,0].numpy()
-				plt.figure()
-				plt.imshow(rotated_filter)
-				plt.title("{}".format(self.rot_angles[idx+1]))
+		for idx in np.arange(self.n_angles):
+			rotated_filter = self.get_weight(idx)[0,0].numpy()
+			plt.figure()
+			plt.imshow(rotated_filter)
+			plt.title("{}".format(self.rot_angles[idx]))
 		plt.show()
 
 
@@ -276,6 +269,7 @@ class OrientedConv2d(_ConvNd):
 			in_channels, out_channels, kernel_size, stride, padding, dilation,
 			False, _pair(0), groups, bias, 'zeros')
 		
+		kernel_size = kernel_size[0]
 		grid_size = kernel_size - 8
 		grids = compute_grids((min_angle, max_angle), angle_step, kernel_size, grid_size)
 		self.register_buffer('grids', grids)
@@ -287,7 +281,6 @@ class OrientedConv2d(_ConvNd):
 	
 	def eval(self,):
 		super(OrientedConv2d, self).eval()
-		pdb.set_trace() #Comprobar tamaño de los grids
 		for grid in self.grids:
 			grid = grid.unsqueeze(0).repeat(self.weight.shape[0], 1, 1, 1)
 			self.rotated_weights.append(F.grid_sample(self.weight, grid))

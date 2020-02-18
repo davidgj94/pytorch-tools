@@ -4,6 +4,7 @@ from mahotas.morph import hitmiss as hit_or_miss
 from skimage.morphology import medial_axis as skeletonize
 from matplotlib.patches import Circle
 from sklearn.cluster import MeanShift
+import pdb
 
 
 def compute_patterns():
@@ -135,10 +136,34 @@ def test_branch_points(label):
 
 def compute_junction_gt(label, sigma=50, tresh=0.5):
 
-	def cluster_coords(coords, bandwidth):
+	test_branch_points(label)
+
+	H, W = label.shape
+	sigma /= np.sqrt(H * W)
+
+	def cluster_coords(coords,):
+		bandwidth = sigma / 3
 		ms = MeanShift(bandwidth=bandwidth)
 		ms.fit(coords)
-		return ms.cluster_centers_
+		cluster_labels = ms.labels_
+		cluster_centers = ms.cluster_centers_
+		tresholds = []
+		new_coords = []
+		for label_idx in np.unique(cluster_labels).tolist():
+			_coords = coords[cluster_labels == label_idx]
+			new_coords.append(_coords)
+			num_coords = len(_coords)
+			tresholds += [tresh / num_coords]*num_coords
+
+			# if n_coords == 1:
+			# 	tresholds.append(tresh)
+			# else:
+
+				# _cluster_center = cluster_centers[label_idx]
+				# diff = _coords - _cluster_center
+				# new_sigma = np.sqrt((diff ** 2).sum(1)).mean()
+				# sigmas += [new_sigma]*n_coords
+		return tresholds, np.vstack(new_coords)
 
 	skel = skeletonize(label)
 	bp = find_branch_points(skel)
@@ -147,18 +172,20 @@ def compute_junction_gt(label, sigma=50, tresh=0.5):
 
 	coords = extract_coords(bp, normalize=True)
 	junction_gt = np.zeros_like(label, dtype=np.float32)
-	H, W = label.shape
 	X, Y = np.meshgrid(np.linspace(-1.0, 1.0, W), np.linspace(-1.0, 1.0, H))
-	sigma /= np.sqrt(H * W)
-	coords = cluster_coords(coords, bandwidth=(sigma/3))
+	tresholds, coords = cluster_coords(coords)
 
-	for idx in np.arange(len(coords)):
+	for idx, _sigma in enumerate(sigmas):
 		mu_x, mu_y = coords[idx].tolist()
-		G = np.exp(-1.0 * ((X-mu_x)** 2 / (2 * sigma**2) + (Y-mu_y)**2 / (2 * sigma**2)) ) / (2 * np.pi * sigma**2)
+		G = np.exp(-1.0 * ((X-mu_x)** 2 / (2 * _sigma**2) + (Y-mu_y)**2 / (2 * _sigma**2)) ) / (2 * np.pi * _sigma**2)
 		G /= G.max()
 		G[G<tresh] = 0.0
 		junction_gt += G
 	junction_gt = np.clip(junction_gt, a_min=0.0, a_max=1.0)
+
+	plt.figure()
+	plt.imshow(junction_gt)
+	plt.show()
 	
 	return junction_gt, np.ones_like(junction_gt, dtype=np.float32)
 	
