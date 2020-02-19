@@ -1,0 +1,55 @@
+num_classes: 1
+
+# Training Configuration
+training:
+
+    batch_size: 1
+    display_iters: 1
+    iter_size: 10
+    learning_rate: 0.0005
+    init: roads/epoch_8.pth
+
+    # Dataset Configuration
+    dataset:
+        name: 'roads_dataset_balanced'
+        params:
+            root: '/home/davidgj/projects/refactor_v2/spacenet3'
+            augmentations:
+                - random_flip:
+                - random_crop:
+                    w: 800
+                    h: 800
+
+    # Model Configuration
+    model:
+        name: 'roads_net'
+        stride: 8
+        params:
+          angle_step: 15.0
+
+    loss:
+       - lines_binary_seg: 1.0
+       - junction_binary_seg: 0.8
+
+# Validation Configuration
+validation:
+
+    batch_size: 1
+    val_epochs: 3
+
+    val_expers:
+
+        - name: "line_seg"
+          # Dataset Configuration
+          dataset:
+              name: 'roads_dataset'
+              params:
+                  training: False
+                  root: '/home/davidgj/projects/refactor_v2/spacenet3'
+
+          # Model Configuration
+          model:
+              name: 'roads_net'
+              stride: 8
+              params:
+                  angle_step: 15.0
