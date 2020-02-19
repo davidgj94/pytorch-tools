@@ -46,7 +46,7 @@ def padding(dilation, kernel_size):
 	return dilation * (kernel_size - 1) // 2
 
 
-def create_convnet(conv_layer, planes, kernel_size, padding, dilation, groups, remove_last_relu=False, **kwargs):
+def create_convnet(conv_layer, planes, kernel_size, padding, dilation, groups, **kwargs):
 
 	def _init_conv(m):
 		if isinstance(m, OrientedConv2d):
@@ -68,9 +68,6 @@ def create_convnet(conv_layer, planes, kernel_size, padding, dilation, groups, r
 		norm = nn.GroupNorm(groups, out_planes)
 		relu = nn.ReLU()
 		layers += [_conv, norm, relu]
-	
-	if remove_last_relu:
-		layers = layers[:-1]
 
 	return nn.Sequential(*layers)
 
@@ -83,28 +80,27 @@ def forward_ori(ori_net, x, idx):
 
 
 class Deeplabv3_Roads(Deeplabv3Plus):
-	def __init__(self, n_classes, pretrained_model, freeze_all=False):
+	def __init__(self, n_classes, pretrained_model, freeze_backbone=False):
 		super(Deeplabv3_Roads, self).__init__(n_classes, pretrained_model, aux=False)
-		self.freeze_parameters(freeze_all)
+		self.freeze_parameters(freeze_backbone)
 		self.params_group = super(Deeplabv3_Roads, self).trainable_parameters(True)
 	
-	def freeze_parameters(self, freeze_all):
+	def freeze_parameters(self, freeze_backbone):
 		for name, param in self.named_parameters():
-			if ('backbone' in name) or ('classifier' in name) or freeze_all:
+			if ('backbone' in name) and freeze_backbone:
 				param.requires_grad = False
 	
 	def trainable_parameters(self):
 		return self.params_group
 
-@register.attach('roads_net')
-class RoadsNet(Deeplabv3_Roads):
+@register.attach('roads_net_stage1')
+class RoadsNet_Stage1(Deeplabv3_Roads):
 	def __init__(self, n_classes, pretrained_model,
 					min_angle=0.0, max_angle=180.0, angle_step=30.0, 
 					grid_size=7, dilation=1, ori_planes=[256, 128, 64, 32],
-					fuse_kernel_size=3, fuse_dilation=1, fuse_planes=[384, 256, 256],
-					freeze_all=False, norm_groups=8, aux_ori=False, aux_junction=True):
+					norm_groups=8, freeze_backbone=False):
 
-		super(RoadsNet, self).__init__(n_classes, pretrained_model, freeze_all=freeze_all)
+		super(RoadsNet_Stage1, self).__init__(n_classes, pretrained_model, freeze_backbone=freeze_backbone)
 
 		self.rot_angles = np.arange(min_angle, max_angle + angle_step, angle_step)
 		self.n_angles = len(self.rot_angles)
@@ -121,36 +117,8 @@ class RoadsNet(Deeplabv3_Roads):
 										max_angle=max_angle,
 										angle_step=angle_step)
 
-		project_channels_in = int((self.n_angles - 1) * ori_planes[-1])
-		project_channels_out = 128
-		self.project_ori = nn.Sequential(
-			nn.Conv2d(project_channels_in, project_channels_out, kernel_size=1, stride=1, bias=False),
-			nn.GroupNorm(norm_groups, project_channels_out),
-			nn.ReLU(),
-			nn.Dropout(0.1))
-		self.project_ori.apply(init_conv)
-
-		padding_fuse = padding(fuse_dilation, fuse_kernel_size)
-		self.fuse_net = create_convnet(nn.Conv2d, 
-										fuse_planes, 
-										fuse_kernel_size, 
-										padding_fuse, 
-										fuse_dilation, 
-										norm_groups,
-										remove_last_relu=True)
-
-		self.roads_clf = nn.Conv2d(256, 1, kernel_size=1, stride=1, bias=False)
-		init_conv(self.roads_clf)
-
-		self.aux_ori_clf = None
-		if aux_ori:
-			self.aux_ori_clf = nn.Conv2d(ori_planes[-1], 1, kernel_size=1, stride=1, bias=False)
-			init_conv(self.aux_ori_clf)
-		
-		self.aux_junction_clf = None
-		if aux_junction:
-			self.aux_junction_clf = nn.Conv2d(project_channels_out, 1, kernel_size=1, stride=1, bias=False)
-			init_conv(self.aux_junction_clf)
+		self.aux_ori_clf = nn.Conv2d(ori_planes[-1], 1, kernel_size=1, stride=1, bias=False)
+		init_conv(self.aux_ori_clf)
 
 
 	def _forward_dir(self, x, idx):
@@ -158,7 +126,7 @@ class RoadsNet(Deeplabv3_Roads):
 
 
 	def eval(self,):
-		super(RoadsNet, self).eval()
+		super(RoadsNet_Stage1, self).eval()
 		for module in self.ori_net._modules.values():
 			if isinstance(module, OrientedConv2d):
 				module.eval()
@@ -166,17 +134,11 @@ class RoadsNet(Deeplabv3_Roads):
 
 	def trainable_parameters(self, base_lr, alfa=10,):
 
-		params_groups_2 = list(super(RoadsNet, self).trainable_parameters())
+		params_groups_2 = list(super(RoadsNet_Stage1, self).trainable_parameters())
 
 		params_groups_1 = []
 		params_groups_1 += list(self.ori_net.parameters())
-		params_groups_1 += list(self.fuse_net.parameters())
-		params_groups_1 += list(self.project_ori.parameters())
-		params_groups_1 += list(self.roads_clf.parameters())
-		if self.aux_ori_clf is not None:
-			params_groups_1 += list(self.aux_ori_clf.parameters())
-		if self.aux_junction_clf is not None:
-			params_groups_1 += list(self.aux_junction_clf.parameters())
+		params_groups_1 += list(self.aux_ori_clf.parameters())
 
 		total_params_groups = [{'params': iter(params_groups_1), 'lr': base_lr}]
 		if len(params_groups_2) > 0:
@@ -184,16 +146,10 @@ class RoadsNet(Deeplabv3_Roads):
 		return total_params_groups
 
 
-	def res_net(self, x_project, x_decoder):
-		x_concat = torch.cat([x_project, x_decoder], dim=1)
-		x_res = self.fuse_net(x_concat)
-		return F.relu(x_decoder + x_res)
-
-
-	def forward(self, inputs):
+	def forward(self, inputs, return_intermediate=False):
 
 		input_shape = inputs["image"].shape[-2:]
-		features = super(RoadsNet, self).forward(inputs, return_intermediate=True)
+		features = super(RoadsNet_Stage1, self).forward(inputs, return_intermediate=True)
 		x_decoder = features["decoder"]
 
 		# Se asume batch size de 1
@@ -201,32 +157,91 @@ class RoadsNet(Deeplabv3_Roads):
 		for idx in np.arange(self.n_angles-1):
 			x_ori.append(self._forward_dir(x_decoder, idx))
 		
-		if self.training and (self.aux_ori_clf is not None):
-			seg_ori = compute_seg(torch.cat(x_ori, dim=0), input_shape, self.aux_ori_clf).squeeze(1).unsqueeze(0)
-		
-		x_project = self.project_ori(torch.cat(x_ori, dim=1))
+		seg_ori = compute_seg(torch.cat(x_ori, dim=0), input_shape, self.aux_ori_clf).squeeze(1).unsqueeze(0)
 
-		if self.training and (self.aux_junction_clf is not None):
-			seg_junction = compute_seg(x_project, input_shape, self.aux_junction_clf).squeeze(1)
-
-		x_out = self.res_net(x_project, x_decoder)
-		seg_roads = compute_seg(x_out, input_shape, self.roads_clf).squeeze(1)
+		if return_intermediate:
+			features['ori'] = x_ori
+			features['seg_ori'] = seg_ori
+			return features
 
 		result = OrderedDict()
 		if self.training:
-			result["seg_roads"] = seg_roads
-			if self.aux_ori_clf is not None:
-				result["seg_ori"] = seg_ori
-			if self.aux_junction_clf is not None:
-				result["seg_junction"] = seg_junction
+			result["seg_ori"] = seg_ori
 		else:
-			result["seg"] = (seg_roads > 0).cpu()
+			result["seg"] = (seg_ori > 0).cpu()
 
 		return result
 
 
-@register.attach('test_roads')
-class OrientedNetTest(RoadsNet):
+@register.attach('roads_net_stage2')
+class RoadsNet_Stage2(RoadsNet_Stage1):
+	def __init__(self, n_classes, pretrained_model,
+					min_angle=0.0, max_angle=180.0, angle_step=30.0, 
+					grid_size=7, dilation=1, ori_planes=[256, 128, 64, 32],
+					fuse_kernel_size=5, fuse_dilation=2, fuse_planes=[192, 128, 128],
+					norm_groups=8, freeze_backbone=True,):
+		super(RoadsNet_Stage2, self).__init__(n_classes, pretrained_model,
+													min_angle=min_angle, max_angle=max_angle, angle_step=angle_step,
+													grid_size=grid_size, dilation=dilation, ori_planes=ori_planes,
+													norm_groups=norm_groups, freeze_backbone=freeze_backbone)
+
+		padding_fuse = padding(fuse_dilation, fuse_kernel_size)
+		self.fuse_net = create_convnet(nn.Conv2d, 
+										fuse_planes, 
+										fuse_kernel_size, 
+										padding_fuse, 
+										fuse_dilation, 
+										norm_groups,)
+
+		decoder_channels = fuse_planes[-1] // 4
+		self.reduce_decoder = nn.Sequential(
+			nn.Conv2d(256, decoder_channels, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(norm_groups, decoder_channels),
+			nn.ReLU(),
+			nn.Dropout(0.5))
+		self.reduce_decoder.apply(init_conv)
+
+		self.roads_clf = nn.Sequential(
+			nn.Conv2d(decoder_channels + fuse_planes[-1], fuse_planes[-1], kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(norm_groups, fuse_planes[-1]),
+			nn.ReLU(),
+			nn.Dropout(0.1),
+			nn.Conv2d(fuse_planes[-1], 1, kernel_size=1, stride=1, bias=False),)
+		self.roads_clf.apply(init_conv)
+	
+	def trainable_parameters(self, base_lr, alfa):
+		param_groups = super(RoadsNet_Stage2, self).trainable_parameters(base_lr, alfa=alfa)
+		param_groups_1 = list(param_groups[0]['params'])
+		param_groups_1 += list(self.fuse_net.parameters())
+		param_groups_1 += list(self.reduce_decoder.parameters())
+		param_groups_1 += list(self.roads_clf.parameters())
+		param_groups[0] = dict(params=iter(param_groups_1), lr=base_lr)
+		return param_groups
+	
+	def forward(self, inputs):
+
+		input_shape = inputs["image"].shape[-2:]
+
+		features = super(RoadsNet_Stage2, self).forward(inputs, return_intermediate=True)
+		x_decoder = features['decoder']
+		x_ori = features['ori']
+		seg_ori = features['seg_ori']
+
+		x_fuse = self.fuse_net(torch.cat(x_ori, dim=1))
+		x_decoder = self.reduce_decoder(x_decoder)
+		x_concat = torch.cat([x_fuse, x_decoder], dim=1)
+		seg_roads = compute_seg(x_concat, input_shape, self.roads_clf)
+
+		result = OrderedDict()
+		if self.training:
+			result['seg_ori'] = seg_ori
+			result['seg_roads'] = seg_roads
+		
+		return result
+
+
+@register.attach('test_roads_v2')
+class OrientedNetTest(RoadsNet_Stage1):
 	def __init__(self, n_classes, pretrained_model, aux=False):
 
 		grid_size = 25
