@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 # from functools import partial
 from .save import makedir
+import time
 
 
 # def list_to_od(_list):
@@ -24,25 +25,25 @@ from .save import makedir
 def get_cfgs_v2(config_path):
 
 	with open(config_path, 'r') as stream:
-	    try:
-	    	config = yaml.safe_load(stream)
-	    	return config
-	    except yaml.YAMLError as exc:
-	        print(exc)
+		try:
+			config = yaml.safe_load(stream)
+			return config
+		except yaml.YAMLError as exc:
+			print(exc)
 	return None
 
 
 def get_cfgs(config_path):
 
 	with open(config_path, 'r') as stream:
-	    try:
-	        config = yaml.safe_load(stream)
-	        num_classes = config["num_classes"]
-	        training_cfg = config["training"]
-	        val_cfg = config["validation"]
-	        return num_classes, training_cfg, val_cfg
-	    except yaml.YAMLError as exc:
-	        print(exc)
+		try:
+			config = yaml.safe_load(stream)
+			num_classes = config["num_classes"]
+			training_cfg = config["training"]
+			val_cfg = config["validation"]
+			return num_classes, training_cfg, val_cfg
+		except yaml.YAMLError as exc:
+			print(exc)
 	return None
 
 def get_cfgs_video(config_path):
@@ -50,13 +51,13 @@ def get_cfgs_video(config_path):
 	exper_name = os.path.basename(config_path).split('.')[0]
 
 	with open(config_path, 'r') as stream:
-	    try:
-	        config = yaml.safe_load(stream)
-	        num_classes = config["num_classes"]
-	        video_cfg = config["video"]
-	        return num_classes, video_cfg
-	    except yaml.YAMLError as exc:
-	        print(exc)
+		try:
+			config = yaml.safe_load(stream)
+			num_classes = config["num_classes"]
+			video_cfg = config["video"]
+			return num_classes, video_cfg
+		except yaml.YAMLError as exc:
+			print(exc)
 	return None
 
 
@@ -116,11 +117,19 @@ def save_heatmaps(segs, save_path, v_min=None, v_max=None):
 		heat_save_path = os.path.join(heatmaps_save_dir, 'heat_{}.png').format(idx)
 		colored_seg = (cmap(seg.numpy())[:, :, :3] * 255).astype(np.uint8)
 		Image.fromarray(colored_seg).save(heat_save_path)
-	
 
 
+def timeit(f):
 
+	def timed(*args, **kw):
 
+		ts = time.time()
+		result = f(*args, **kw)
+		te = time.time()
+		print('diff_time = {}'.format(te-ts))
+		return result
+
+	return timed
 
 
 

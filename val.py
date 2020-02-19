@@ -22,19 +22,7 @@ from argparse import ArgumentParser
 from torchsummary import summary
 from torchtools.save import ResultsSaver, SegVisSaver
 from pathlib import Path
-import time
-
-def timeit(f):
-
-    def timed(*args, **kw):
-
-        ts = time.time()
-        result = f(*args, **kw)
-        te = time.time()
-        print('diff_time = {}'.format(te-ts))
-        return result
-
-    return timed
+from torchtools.utils import timeit
 
 def get_last_checkpoint(checkpoint_dir):
 
@@ -59,6 +47,9 @@ def parse_args():
 	parser = ArgumentParser()
 	parser.add_argument('--config', type=str, required=True, nargs='+')
 	parser.add_argument('--parts', type=int, required=True, nargs='+')
+	parser.add_argument('--epoch', type=int)
+	parser.add_argument('-train', dest='train', action='store_true')
+	parser.set_defaults(train=False)
 	return parser.parse_args()
 
 
@@ -114,9 +105,8 @@ def main(config_path, part, epoch=None, val=True, use_cpu=False):
 		print('>> {}'.format(val_exper_name))
 		val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
 		val_model.load_state_dict(model_train.state_dict(), strict=False)
-		metric = RunningScore(4, pred_name='seg', label_name='mask_test')
-		angle_metric = AccuracyAngleRange(pred_name="hist", label_name="angle_range_label")
-		vis_saver = SegVisSaver(4, pred_name='seg', label_name='vis_image')
+		metric = RunningScore(2, pred_name='seg', label_name='label')
+		vis_saver = SegVisSaver(2, pred_name='seg', label_name='vis_image')
 		result_saver = ResultsSaver(result_dir, metrics=dict(iou=metric), vis_savers=dict(vis=vis_saver))
 		# result_saver = ResultsSaver(result_dir, metrics=dict(angle_metric=angle_metric))
 		validate(val_model, val_dataloader, result_saver)
@@ -128,4 +118,4 @@ if __name__ == "__main__":
 	args = parse_args()
 	for part in args.parts:
 		for config_path in args.config:
-			main(config_path, part)
+			main(config_path, part, args.epoch, val=(not args.train))

@@ -127,11 +127,22 @@ def margin_ranking_loss(inputs, data, margin=0.1):
 @register.attach('lines_binary_seg')
 def lines_binary_seg(inputs, data):
 
-	lines_seg = inputs['lines_seg'].squeeze(1)
+	lines_seg = inputs['seg_roads']
 	device = lines_seg.device
 
 	weights = data['weights'].to(device)
-	label = data['mask'].to(device)
+	label = data['label'].to(device)
+
+	return utils.binary_loss(lines_seg, label, weights)
+
+@register.attach('junction_binary_seg')
+def junction_binary_seg(inputs, data):
+
+	lines_seg = inputs['seg_junction']
+	device = lines_seg.device
+
+	weights = data['junction_weights'].to(device)
+	label = data['junction_gt'].to(device)
 
 	return utils.binary_loss(lines_seg, label, weights)
 

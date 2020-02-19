@@ -112,11 +112,9 @@ class Deeplabv3Plus(Deeplabv3):
 			seg = self.classifier(x)
 
 			if not self.training:
-				_, seg = torch.max(seg, 1)
-				result["seg"] = seg.cpu()
+				result["seg"] = (seg.squeeze(1) > 0).cpu()
 			else:
-				result["out"] = OrderedDict()
-				result["out"]["seg"] = seg
+				result["seg"] = seg.squeeze(1)
 				
 			return result
 
