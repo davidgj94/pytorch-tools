@@ -4,7 +4,7 @@
 import math
 
 import numpy as np
-import data_utils.rdp as rdp
+import torchtools.road_utils.rdp as rdp
 
 
 def simplify_edge(ps, max_distance=1):

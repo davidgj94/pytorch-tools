@@ -169,6 +169,23 @@ class CheckpointSaver:
 			'learning_rate': optimizer.param_groups[0]['lr'],
 			'optimizer_state_dict': optimizer.state_dict()}, checkpoint_path)
 
+class CheckpointSaverAux:
+	def __init__(self, checkpoint_dir, start_epoch):
+		self.checkpoint_dir = checkpoint_dir
+		makedir(self.checkpoint_dir)
+		self.start_epoch = start_epoch + 1
+
+
+	def __call__(self, epoch, model, optimizer):
+
+		epoch += self.start_epoch
+		checkpoint_path = os.path.join(self.checkpoint_dir, 'epoch_{}.pth'.format(epoch))
+		torch.save({
+			'epoch': epoch,
+			'model_state_dict': model.state_dict(),
+			'learning_rate': [param_groups['lr'] for param_groups in optimizer.param_groups],
+			'optimizer_state_dict': optimizer.state_dict()}, checkpoint_path)
+
 class VideoSaver:
 
 	def __init__(self, n_classes, save_path, fps=10.0):

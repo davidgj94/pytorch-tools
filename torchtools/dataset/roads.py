@@ -20,6 +20,7 @@ from scipy import ndimage
 import pickle
 from pathlib import Path
 from torchtools.road_utils.junction import compute_junction_gt, find_branch_points, extract_coords, test_branch_points
+import torchtools.road_utils.affinity_utils as affinity_utils
 from skimage.morphology import medial_axis as skeletonize
 from sklearn.cluster import MeanShift
 from torchtools.utils import timeit
@@ -30,13 +31,14 @@ class RoadsDataset(data.Dataset):
 	"""
 	Base dataset class
 	"""
-	def __init__(self, root, id_list_path, augmentations=[], training=True, treshold=0.76):
+	def __init__(self, root, id_list_path, augmentations=[], training=True, treshold=0.76, angle_step=15.0):
 
 		self.id_list = np.loadtxt(id_list_path, dtype=str)
 		self.mean = [0.485, 0.456, 0.406]
 		self.var = [0.229, 0.224, 0.225]
 		self.augmentations = Compose(augmentations)
 		self.training = training
+		self.angle_step = angle_step
 		if self.training:
 			self.root = os.path.join(root, 'train')
 		else:
@@ -71,8 +73,11 @@ class RoadsDataset(data.Dataset):
 		data = dict(image_id=image_id, image=image, label=label, weights=np.ones_like(label, dtype=np.float32), vis_image=vis_image)
 
 		if self.training:
-			junction_gt, junction_weights = compute_junction_gt(label)
-			data.update(junction_gt=junction_gt, junction_weights=junction_weights)
+			keypoints = affinity_utils.getKeypoints(label, is_gaussian=False, is_skeleton=False)
+			ori_gt, ori_weights = affinity_utils.getVectorMapsAngles(label.shape, keypoints, bin_size=self.angle_step, theta=10)
+
+			# junction_gt, junction_weights = compute_junction_gt(label)
+			data.update(ori_gt=ori_gt, ori_weights=ori_weights)
 		
 		return data
 

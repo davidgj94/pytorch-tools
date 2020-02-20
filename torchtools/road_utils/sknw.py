@@ -8,7 +8,9 @@ https://github.com/yxdragon/sknw
 
 import networkx as nx
 import numpy as np
-from numba import jit
+
+def jit(func):
+    return func
 
 
 # get neighbors d index

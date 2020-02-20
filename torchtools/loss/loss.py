@@ -147,6 +147,18 @@ def junction_binary_seg(inputs, data):
 	return utils.binary_loss(lines_seg, label, weights)
 
 
+@register.attach('ori_binary_seg')
+def ori_binary_seg(inputs, data):
+
+	lines_seg = inputs['seg_ori']
+	device = lines_seg.device
+
+	weights = data['ori_weights'].to(device)
+	label = data['ori_gt'].to(device)
+
+	return utils.binary_loss(lines_seg, label, weights)
+
+
 
 @register.attach('aux_ori_loss_v1')
 def aux_ori_loss_v1(inputs, data):

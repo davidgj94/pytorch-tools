@@ -11,9 +11,10 @@ training:
 
     # Dataset Configuration
     dataset:
-        name: 'roads_dataset_balanced'
+        name: 'roads_dataset'
         params:
             root: '/home/davidgj/projects/refactor_v2/spacenet3'
+            angle_step: 15.0
             augmentations:
                 - random_flip:
                 - random_crop:
@@ -22,8 +23,10 @@ training:
 
     # Model Configuration
     model:
-        name: 'dummy'
+        name: 'test_roads_v2'
         stride: 8
+        params:
+          angle_step: 15.0
 
     loss:
        - lines_binary_seg: 1.0
