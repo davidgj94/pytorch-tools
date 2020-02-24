@@ -26,6 +26,7 @@ def parse_args():
 	return parser.parse_args()
 
 def _test(dataset, model):
+	model.eval()
 	loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0)
 	for _iter, data in tqdm(enumerate(loader), total=len(loader), dynamic_ncols=True):
 		model(data)

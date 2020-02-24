@@ -52,8 +52,6 @@ def padding(dilation, kernel_size):
 
 def create_convnet(conv_layer, planes, kernel_size, padding, dilation, groups, **kwargs):
 
-	pdb.set_trace() # Ver el contenido de kwargs
-
 	def _init_conv(m):
 		if isinstance(m, OrientedConv2d):
 			m.reset_parameters()
@@ -106,11 +104,9 @@ class RoadsNetMultitask(Deeplabv3_Roads):
 	def __init__(self, n_classes, pretrained_model,
 					min_angle=0.0, max_angle=180.0, angle_step=15.0,
 					layer1_channels=64, layer2_channels=64, 
-					decoder_1_grid_size=7, decoder_1_planes=[128, 64],
+					decoder_1_grid_size=7, decoder_1_planes=[128, 128],
 					decoder_2_kernel_size=3, decoder_2_planes=[128, 128], norm_groups=8,
-					stage2=False, fuse_planes=[256, 256, 256], fuse_kernel_size=3, fuse_dilation=2,
-					freeze_backbone=False, freeze_aspp=False, 
-					freeze_decoder_1=False, freeze_decoder_2=False,):
+					freeze_backbone=False, freeze_aspp=False,):
 
 		super(RoadsNetMultitask, self).__init__(n_classes, pretrained_model, 
 													freeze_backbone=freeze_backbone,
@@ -146,7 +142,7 @@ class RoadsNetMultitask(Deeplabv3_Roads):
 		# Decoder 2
 
 		self.reduce_layer2 = nn.Sequential(
-			nn.Conv2d(256, layer2_channels, kernel_size=1, stride=1, bias=False),
+			nn.Conv2d(512, layer2_channels, kernel_size=1, stride=1, bias=False),
 			nn.GroupNorm(norm_groups, layer2_channels),
 			nn.ReLU(),
 			nn.Dropout(0.5))
@@ -162,37 +158,6 @@ class RoadsNetMultitask(Deeplabv3_Roads):
 
 		self.decoder_2_clf = nn.Conv2d(decoder_2_planes[-1], 1, kernel_size=1, stride=1, bias=False)
 		init_conv(self.decoder_2_clf)
-
-		self.reduce_decoder_1 = None
-		self.fuse_net = None
-		self.roads_clf = None
-
-		if stage2:
-
-			decoder_1_out = (self.n_angles - 1) * decoder_1_planes[-1]
-			self.reduce_decoder_1 = nn.Sequential(
-										nn.Conv2d(decoder_1_out, 256, kernel_size=1, stride=1, bias=False),
-										nn.GroupNorm(norm_groups, 256),
-										nn.ReLU(),
-										nn.Dropout(0.5))
-			self.reduce_decoder_1.apply(init_conv)
-
-			self.fuse_net = create_convnet(nn.Conv2d, 
-										fuse_planes, 
-										fuse_kernel_size, 
-										padding(fuse_dilation, fuse_kernel_size), 
-										dilation=fuse_dilation, 
-										groups=norm_groups,)
-
-			in_channels_roads = fuse_planes[-1] + decoder_2_planes[-1]
-			self.roads_clf = nn.Sequential(
-									nn.Conv2d(in_channels_roads, 256, kernel_size=1, stride=1, bias=False),
-									nn.GroupNorm(norm_groups, 256),
-									nn.ReLU(),
-									nn.Dropout(0.1,),
-									nn.Conv2d(256, 1, kernel_size=1, stride=1, bias=False))
-			self.roads_clf.apply(init_conv)
-
 
 
 	def _forward_dir(self, x, idx):
@@ -250,18 +215,17 @@ class RoadsNetMultitask(Deeplabv3_Roads):
 
 		input_shape = inputs["image"].shape[-2:]
 		features = super(RoadsNetMultitask, self).forward(inputs, return_intermediate=True)
-		pdb.set_trace()
 		x_aspp = features["aspp"]
 		x_out1 = self.forward_decoder1(x_aspp, features["layer1"])
 		x_out2 = self.forward_decoder2(x_aspp, features["layer2"])
 
-		seg_1 = compute_seg(x_out1, input_shape, self.decoder_1_clf)
-		seg_2 = compute_seg(x_out2, input_shape, self.decoder_2_clf)
+		seg_1 = compute_seg(x_out1, input_shape, self.decoder_1_clf).squeeze(1).unsqueeze(0)
+		seg_2 = compute_seg(x_out2, input_shape, self.decoder_2_clf).squeeze(1)
 
 		result = OrderedDict()
 		if self.training:
-			result["seg_1"] = seg_1
-			result["seg_2"] = seg_2
+			result["seg_ori"] = seg_1
+			result["seg_roads"] = seg_2
 
 		return result
 

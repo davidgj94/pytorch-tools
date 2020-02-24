@@ -72,13 +72,15 @@ def main(config, num_epochs, use_cpu, part):
 		last_checkpoint = torch.load(last_checkpoint_path)
 		model_train.load_state_dict(last_checkpoint["model_state_dict"], strict=False)
 		current_epoch = last_checkpoint["epoch"]
-		learning_rate = last_checkpoint.get("learning_rate", learning_rate)
+		if "init" not in training_cfg:
+			learning_rate = last_checkpoint.get("learning_rate", learning_rate)
 		print("CHECKPOINT: {}".format(last_checkpoint_path))
 		print("Learning rate: {}".format(learning_rate))
 
-	optimizer = optim.SGD(model_train.trainable_parameters(base_lr=0.0005),
-						momentum=0.9, 
-						weight_decay=1e-5)
+	optimizer = optim.SGD(model_train.trainable_parameters(base_lr=learning_rate),
+					lr=learning_rate,
+					momentum=0.9, 
+					weight_decay=1e-5)
 	scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
 	checkpoint_saver = CheckpointSaver(checkpoint_dir, current_epoch)
 

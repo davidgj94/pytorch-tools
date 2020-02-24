@@ -58,6 +58,7 @@ def main(config, num_epochs, use_cpu, part):
 	device = torch.device("cuda:0" if torch.cuda.is_available() and not use_cpu else "cpu")
 
 	model_train = get_model(num_classes, training_cfg["model"]).to(device)
+	pdb.set_trace()
 	train_dataloader = get_dataloader(id_list_path, training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
 	criterion = get_loss(training_cfg['loss'])
 
