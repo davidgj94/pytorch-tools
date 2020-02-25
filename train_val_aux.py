@@ -16,11 +16,73 @@ from argparse import ArgumentParser
 from torchsummary import summary
 from torchtools.save import CheckpointSaver
 from pathlib import Path
-from val import validate
-from train import train
+# from val import validate
+# from train import train
+from torchtools.metrics import AverageMeter
+from torchtools.metric import get_metric
+
+
+def set_bn_eval(m):
+	if isinstance(m, nn.modules.batchnorm._BatchNorm):
+		m.eval()
+
+def train(train_model, train_dataloader, criterion, optimizer, training_cfg):
+
+	train_model.train()
+	train_model.apply(set_bn_eval)
+
+	running_loss = AverageMeter()
+	running_loss.reset()
+
+	iter_size = training_cfg['iter_size']
+	display_iters = training_cfg['display_iters']
+
+	optimizer.zero_grad()
+
+	# Iterate over data.
+	for _iter, data in tqdm(enumerate(train_dataloader), total=len(train_dataloader), dynamic_ncols=True):
+
+		with torch.set_grad_enabled(True):
+
+			outputs = train_model(data)
+			loss = criterion(outputs, data) / iter_size
+			loss.backward()
+			running_loss.update(loss.item() * iter_size, n=train_dataloader.batch_size)
+
+			if _iter > 0 and _iter % iter_size == 0:
+				optimizer.step()
+				optimizer.zero_grad()
+
+			if _iter > 0 and _iter % (display_iters * iter_size) == 0:
+				print()
+				print('----------------------------------------------')
+				print('>> Loss: {:.4f}'.format(running_loss.value()))
+				print('----------------------------------------------')
+				print()
+				running_loss.reset()
+				for idx, param_group in enumerate(optimizer.param_groups):
+					print('Param Group {}: {}'.format(idx, param_group['lr']))
+
+	optimizer.zero_grad()
+
+def validate(val_model, val_loader, metric):
+
+	val_model.eval()   # Set model to evaluate mode
+	np.random.seed(0)
+
+	with torch.set_grad_enabled(False):
+
+		# Iterate over data.
+		for _iter, data in tqdm(enumerate(val_loader), total=len(val_loader), dynamic_ncols=True):
+			preds = val_model(data)
+			metric(preds, data)
+	
+	metric_value = metric.value()
+	metric.reset()
+
+	return metric_value
 
 def get_dataloader(id_list_path, dataset_cfg, batch_size, shuffle=True):
-
 	dataset_params = dict(dataset_cfg['params'])
 	dataset_params.update(id_list_path=id_list_path)
 	dataset = get_dataset(dataset_cfg['name'])(**dataset_params)
@@ -47,9 +109,9 @@ def parse_args():
 	parser.set_defaults(use_cpu=False)
 	return parser.parse_args()
 
-def main(config, num_epochs, use_cpu, part):
+def main(config, num_epochs, use_cpu, part, max_failed_attemps=2):
 
-	id_list_path = os.path.join('list', 'partition_{}'.format(part), 'train.txt')
+	train_list_path = os.path.join('list', 'partition_{}'.format(part), 'train.txt')
 	exper_name = os.path.basename(config).split(".")[0]
 	root_checkpoint_dir = os.path.join('checkpoint', 'partition_{}'.format(part))
 	checkpoint_dir = os.path.join(root_checkpoint_dir, exper_name)
@@ -58,7 +120,7 @@ def main(config, num_epochs, use_cpu, part):
 	device = torch.device("cuda:0" if torch.cuda.is_available() and not use_cpu else "cpu")
 
 	model_train = get_model(num_classes, training_cfg["model"]).to(device)
-	train_dataloader = get_dataloader(id_list_path, training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
+	train_dataloader = get_dataloader(train_list_path, training_cfg['dataset'], training_cfg['batch_size'], shuffle=True)
 	criterion = get_loss(training_cfg['loss'])
 
 	current_epoch = 0
@@ -85,22 +147,53 @@ def main(config, num_epochs, use_cpu, part):
 	checkpoint_saver = CheckpointSaver(checkpoint_dir, current_epoch)
 
 	for epoch in range(num_epochs):
-
 		print('Epoch {}/{}'.format(epoch, num_epochs - 1))
 		print('-' * 10)
-
-		# Each epoch has a training and validation phase
-		for phase in ['train', 'val']:
-
-			if phase == 'train':
-				train(model_train, 
+		train(model_train, 
 					train_dataloader, 
 					criterion, 
 					optimizer,
 					training_cfg)
-				scheduler.step()
-			elif (epoch + 1) % val_cfg['val_epochs'] == 0:
+		scheduler.step()
+		if ( (epoch + 1) % val_cfg['val_epochs'] == 0 ) or ( epoch == (num_epochs - 1) ):
+			checkpoint_saver(epoch, model_train, optimizer)
+
+	val_list_path = os.path.join('list', 'partition_{}'.format(part), 'val.txt')
+	val_dataloader = get_dataloader(val_list_path, val_cfg['dataset'], val_cfg['batch_size'], shuffle=False)
+	metric = get_metric(val_cfg['metric'])
+
+	model_val = get_model(num_classes, val_cfg["model"]).to(device)
+	model_val.load_state_dict(model_train.state_dict(), strict=False)
+	best_metric = validate(model_val, val_dataloader, metric)
+	del model_val
+
+	num_failed_attemps = 0
+	while True:
+
+		train(model_train, 
+			train_dataloader, 
+			criterion, 
+			optimizer,
+			training_cfg)
+		scheduler.step()
+		epoch += 1
+
+		if (epoch + 1) % val_cfg['val_epochs'] == 0:
+
+			model_val = get_model(num_classes, val_cfg["model"]).to(device)
+			model_val.load_state_dict(model_train.state_dict(), strict=False)
+			last_metric = validate(model_val, val_dataloader, metric)
+			del model_val
+
+			if last_metric > best_metric:
+				best_metric = last_metric
 				checkpoint_saver(epoch, model_train, optimizer)
+				num_failed_attemps = 0
+			else:
+				if num_failed_attemps < max_failed_attemps:
+					num_failed_attemps += 1
+				else:
+					break
 
 
 if __name__ == "__main__":

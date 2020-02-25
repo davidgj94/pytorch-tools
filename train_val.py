@@ -16,8 +16,9 @@ from argparse import ArgumentParser
 from torchsummary import summary
 from torchtools.save import CheckpointSaver
 from pathlib import Path
-from val import validate
-from train import train
+
+
+
 
 def get_dataloader(id_list_path, dataset_cfg, batch_size, shuffle=True):
 
