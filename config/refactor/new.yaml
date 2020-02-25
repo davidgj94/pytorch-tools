@@ -18,20 +18,20 @@ training:
             augmentations:
                 - random_flip:
                 - random_crop:
-                    w: 700
-                    h: 700
+                      w: 700
+                      h: 700
 
     # Model Configuration
     model:
-        name: 'roads_net_stage2_v2'
+        name: 'roads_net'
         stride: 8
         params:
-          angle_step: 20.0
+            angle_step: 20.0
 
     loss:
-       - binary_seg:
-          name: 'bce'
-          weight: 1.0
+        binary_seg:
+            name: 'bce'
+            weight: 1.0
 
 # Validation Configuration
 validation:
@@ -47,14 +47,14 @@ validation:
             root: '/home/davidgj/projects/refactor_v2/spacenet3'
 
     metric:
-      name: 'miou'
-      params:
-        key: 'binary_seg'
-        num_classes: 2
+        name: 'miou'
+        params:
+            task_key: 'binary_seg'
+            num_classes: 2
 
     # Model Configuration
     model:
-      name: 'roads_net'
-      stride: 8
-      params:
-          angle_step: 20.0
+        name: 'roads_net'
+        stride: 8
+        params:
+            angle_step: 20.0
