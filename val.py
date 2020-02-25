@@ -64,6 +64,7 @@ def validate(val_model, val_loader, result_saver):
 		# Iterate over data.
 		for _iter, data in tqdm(enumerate(val_loader), total=len(val_loader), dynamic_ncols=True):
 			preds = val_model(data)
+			preds.update(label=data['label'])
 			result_saver.update_metrics(preds, data)
 			result_saver.save_vis(preds, data)
 		
@@ -107,7 +108,8 @@ def main(config_path, part, epoch=None, val=True, use_cpu=False):
 		val_model.load_state_dict(model_train.state_dict(), strict=False)
 		metric = RunningScore(2, pred_name='seg', label_name='label')
 		vis_saver = SegVisSaver(2, pred_name='seg', label_name='vis_image')
-		result_saver = ResultsSaver(result_dir, metrics=dict(iou=metric), vis_savers=dict(vis=vis_saver))
+		vis_saver_label = SegVisSaver(2, pred_name='label', label_name='vis_image')
+		result_saver = ResultsSaver(result_dir, metrics=dict(iou=metric), vis_savers=dict(vis=vis_saver, vis_saver_label=vis_saver_label))
 		# result_saver = ResultsSaver(result_dir, metrics=dict(angle_metric=angle_metric))
 		validate(val_model, val_dataloader, result_saver)
 

@@ -114,7 +114,7 @@ class Deeplabv3Plus(Deeplabv3):
 			if not self.training:
 				result["seg"] = (seg.squeeze(1) > 0).cpu()
 			else:
-				result["seg"] = seg.squeeze(1)
+				result["seg_roads"] = seg.squeeze(1)
 				
 			return result
 

@@ -3,9 +3,9 @@ num_classes: 1
 # Training Configuration
 training:
 
-    batch_size: 2
+    batch_size: 1
     display_iters: 1
-    iter_size: 5
+    iter_size: 10
     learning_rate: 0.0005
 
     # Dataset Configuration
@@ -13,11 +13,12 @@ training:
         name: 'roads_dataset'
         params:
             root: '/home/davidgj/projects/refactor_v2/spacenet3'
+            train_ori: False
             augmentations:
                 - random_flip:
                 - random_crop:
-                    w: 600
-                    h: 600
+                    w: 700
+                    h: 700
 
     # Model Configuration
     model:
