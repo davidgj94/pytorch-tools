@@ -20,6 +20,7 @@ from pathlib import Path
 # from train import train
 from torchtools.metrics import AverageMeter
 from torchtools.metric import get_metric
+from torchtools.save import makedir
 
 
 def set_bn_eval(m):
@@ -109,11 +110,15 @@ def parse_args():
 	parser.set_defaults(use_cpu=False)
 	return parser.parse_args()
 
-def main(config, num_epochs, use_cpu, part, max_failed_attemps=2):
+def main(config, num_epochs, use_cpu, part, max_failed_attemps=2, root_checkpoint_dir=None):
 
 	train_list_path = os.path.join('list', 'partition_{}'.format(part), 'train.txt')
 	exper_name = os.path.basename(config).split(".")[0]
-	root_checkpoint_dir = os.path.join('checkpoint', 'partition_{}'.format(part))
+	if root_checkpoint_dir is None:
+		root_checkpoint_dir = os.path.join('checkpoint', 'partition_{}'.format(part))
+	else:
+		root_checkpoint_dir = os.path.join(root_checkpoint_dir, 'checkpoint', 'partition_{}'.format(part))
+		makedir(root_checkpoint_dir)
 	checkpoint_dir = os.path.join(root_checkpoint_dir, exper_name)
 
 	num_classes, training_cfg, val_cfg = utils.get_cfgs(config)
