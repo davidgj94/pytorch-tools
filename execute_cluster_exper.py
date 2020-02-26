@@ -38,7 +38,7 @@ def get_params_str(exper_params):
 
 
 if __name__ == "__main__":
-	pdb.set_trace()
+	
 	args = parse_args()
 
 	exper_name = os.path.basename(args.config).split('.')[0]
