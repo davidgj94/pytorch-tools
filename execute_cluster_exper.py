@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 from torchtools.save import makedir
 import shutil
+import sys
 
 RESULTS_DIR = "/export/data_gpm/canard/cluster"
 
@@ -23,7 +24,7 @@ class StoreDict(argparse.Action):
 def parse_args():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--config', type=str, required=True)
-	parser.add_argument('--exper_params', action=StoreDict, required=False)
+	parser.add_argument('--exper_params', action=StoreDict, required=False, nargs='+')
 	parser.add_argument('--num_epochs', type=int, required=False)
 	parser.add_argument('--part', type=int, default=0)
 	return parser.parse_args()
@@ -37,6 +38,7 @@ def get_params_str(exper_params):
 
 
 if __name__ == "__main__":
+	pdb.set_trace()
 	args = parse_args()
 
 	exper_name = os.path.basename(args.config).split('.')[0]
