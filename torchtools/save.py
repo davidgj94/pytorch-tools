@@ -8,7 +8,7 @@ import json
 import torch
 import matplotlib
 import shutil
-matplotlib.use('tkagg')
+#matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
 
 def makedir(_dir):

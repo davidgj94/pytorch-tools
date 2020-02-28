@@ -1,4 +1,4 @@
-import matplotlib; matplotlib.use('tkagg')
+import matplotlib
 import numpy as np
 from .register import register
 import cv2

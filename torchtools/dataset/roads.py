@@ -1,4 +1,4 @@
-import matplotlib; matplotlib.use('tkagg')
+import matplotlib
 import random
 import numpy as np
 import torch
