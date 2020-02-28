@@ -12,7 +12,7 @@ training:
     dataset:
         name: 'roads_dataset'
         params:
-            root: "/data/tmp/davidgj/datasets/spacenet"
+            root: "$DATASETS/spacenet"
             augmentations:
                 - random_flip:
                 - random_crop:
@@ -24,7 +24,7 @@ training:
         name: 'roads_net'
         stride: 8
         params:
-            angle_step: {angle_step}
+            angle_step: 15.0
 
     tasks:
         binary_seg:
@@ -54,4 +54,4 @@ validation:
         name: 'roads_net'
         stride: 8
         params:
-            angle_step: {angle_step}
+            angle_step: 15.0

@@ -86,7 +86,6 @@ class Deeplabv3_Roads(Deeplabv3):
 	def __init__(self, n_classes, pretrained_model, freeze_backbone=False, freeze_aspp=False):
 		super(Deeplabv3_Roads, self).__init__(n_classes, pretrained_model, aux=False)
 		self.freeze_parameters(freeze_backbone, freeze_aspp)
-		self.params_group = super(Deeplabv3_Roads, self).trainable_parameters(True)
 	
 	def freeze_parameters(self, freeze_backbone, freeze_aspp):
 		for name, param in self.named_parameters():
@@ -94,9 +93,6 @@ class Deeplabv3_Roads(Deeplabv3):
 				param.requires_grad = False
 			elif ('aspp' in name) and freeze_aspp:
 				param.requires_grad = False
-	
-	def trainable_parameters(self):
-		return self.params_group
 
 @register.attach('roads_net')
 class RoadsNet(Deeplabv3_Roads):
