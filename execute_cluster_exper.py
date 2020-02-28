@@ -62,6 +62,8 @@ if __name__ == "__main__":
 	with open(exper_config_path, 'w') as f:
 		f.write(exper_str)
 	
+	print(params_str)
+	
 	makedir(exper_checkpoint_dir)
 	
 	train_val(exper_config_path, args.num_epochs, args.dataset, use_cpu=False, root_checkpoint_dir=exper_checkpoint_dir)

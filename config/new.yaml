@@ -12,7 +12,7 @@ training:
     dataset:
         name: 'roads_dataset'
         params:
-            root: "${DATASETS}/spacenet3"
+            root: "/data/tmp/davidgj/datasets/spacenet"
             augmentations:
                 - random_flip:
                 - random_crop:
