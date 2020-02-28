@@ -3,7 +3,7 @@ import pdb
 import torch
 from .register import register
 
-register.attach('miou')
+@register.attach('miou')
 class JaccardIndex(object):
 	def __init__(self, key, num_classes):
 		self.n_classes = num_classes
@@ -31,7 +31,7 @@ class JaccardIndex(object):
 	def reset(self):
 		self.confusion_matrix = np.zeros((self.n_classes, self.n_classes))
 
-register.attach('per_class_iou')
+@register.attach('per_class_iou')
 class ClassIoU(JaccardIndex):
 	def __init__(self, key, num_classes):
 		super(ClassIoU, self).__init__(key, num_classes)

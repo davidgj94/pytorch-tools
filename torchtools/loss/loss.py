@@ -19,7 +19,7 @@ class MultiTaskLoss:
 		for task_name, task_dict in tasks_dict.items():
 			self.tasks_names.append(task_name)
 			self.tasks_weights.append(task_dict.get("weight", 1.0))
-			self.losses.append(register.get(task_dict['loss_name']))
+			self.losses.append(register.get(task_dict['loss']))
 
 	def __call__(self, inputs, data):
 		total_loss = []

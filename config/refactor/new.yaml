@@ -28,9 +28,9 @@ training:
         params:
             angle_step: 20.0
 
-    loss:
+    tasks:
         binary_seg:
-            name: 'bce'
+            loss: 'bce'
             weight: 1.0
 
 # Validation Configuration
@@ -49,7 +49,7 @@ validation:
     metric:
         name: 'miou'
         params:
-            task_key: 'binary_seg'
+            task: 'binary_seg'
             num_classes: 2
 
     # Model Configuration

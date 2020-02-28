@@ -1,4 +1,4 @@
-# from train_val_aux import main as train_val
+from train_val_aux import main as train_val
 import argparse
 import os.path
 import pdb
@@ -25,7 +25,7 @@ def parse_args():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--config', type=str, required=True)
 	parser.add_argument('--exper_params', action=StoreDict, required=False, nargs='+')
-	parser.add_argument('--num_epochs', type=int, required=False)
+	parser.add_argument('--num_epochs', type=int, default=0)
 	parser.add_argument('--part', type=int, default=0)
 	return parser.parse_args()
 
@@ -33,12 +33,12 @@ def parse_args():
 def get_params_str(exper_params):
 	params_str = ""
 	for key, value in exper_params.items():
-		params_str += "{}={}".format(key, value)
-	return params_str
+		params_str += "{}={}_".format(key, value)
+	return params_str[:-1]
 
 
 if __name__ == "__main__":
-	
+
 	args = parse_args()
 
 	exper_name = os.path.basename(args.config).split('.')[0]
@@ -64,4 +64,4 @@ if __name__ == "__main__":
 	
 	makedir(exper_checkpoint_dir)
 	
-	# train_val(exper_config_path, args.num_epochs, use_cpu=False, part=args.part, root_checkpoint_dir=exper_checkpoint_dir)
+	train_val(exper_config_path, args.num_epochs, use_cpu=False, part=args.part, root_checkpoint_dir=exper_checkpoint_dir)
