@@ -98,23 +98,21 @@ class Deeplabv3_Roads(Deeplabv3):
 	def trainable_parameters(self):
 		return self.params_group
 
-@register.attach('roads_net_multitask')
-class RoadsNetMultitask(Deeplabv3_Roads):
+@register.attach('roads_net')
+class RoadsNet(Deeplabv3_Roads):
 	def __init__(self, n_classes, pretrained_model,
 					min_angle=0.0, max_angle=180.0, angle_step=15.0,
-					layer1_channels=64, layer2_channels=64, 
-					decoder_1_grid_size=7, decoder_1_planes=[128, 128],
-					decoder_2_kernel_size=3, decoder_2_planes=[128, 128], norm_groups=8,
-					freeze_backbone=False, freeze_aspp=False,):
+					layer1_channels=48, decoder_grid_size=7, decoder_planes=[128, 64, 32],
+					fuse_kernel_size=5, norm_groups=8, freeze_backbone=False, freeze_aspp=False,):
 
-		super(RoadsNetMultitask, self).__init__(n_classes, pretrained_model, 
+		super(RoadsNet, self).__init__(n_classes, pretrained_model, 
 													freeze_backbone=freeze_backbone,
 													freeze_aspp=freeze_aspp)
 
 		self.rot_angles = np.arange(min_angle, max_angle + angle_step, angle_step)
 		self.n_angles = len(self.rot_angles)
 
-		# Decoder 1
+		# Decoder
 
 		self.reduce_layer1 = nn.Sequential(
 			nn.Conv2d(256, layer1_channels, kernel_size=1, stride=1, bias=False),
@@ -123,74 +121,55 @@ class RoadsNetMultitask(Deeplabv3_Roads):
 			nn.Dropout(0.5))
 		self.reduce_layer1.apply(init_conv)
 
-		decoder_1_planes = [256+layer1_channels] + decoder_1_planes
-		kernel_size_ori = decoder_1_grid_size + 8
+		decoder_planes = [256+layer1_channels] + decoder_planes
+		decoder_kernel_size = decoder_grid_size + 8
 		self.ori_net = create_convnet(OrientedConv2d, 
-										decoder_1_planes, 
-										kernel_size_ori, 
-										padding(1, decoder_1_grid_size), 
+										decoder_planes, 
+										decoder_kernel_size, 
+										padding(1, decoder_grid_size), 
 										dilation=1, 
 										groups=norm_groups,
 										min_angle=min_angle,
 										max_angle=max_angle,
 										angle_step=angle_step)
 
-		self.decoder_1_clf = nn.Conv2d(decoder_1_planes[-1], 1, kernel_size=1, stride=1, bias=False)
-		init_conv(self.decoder_1_clf)
-
-		# Decoder 2
-
-		self.reduce_layer2 = nn.Sequential(
-			nn.Conv2d(512, layer2_channels, kernel_size=1, stride=1, bias=False),
-			nn.GroupNorm(norm_groups, layer2_channels),
+		out_planes_decoder = decoder_planes[-1] * (self.n_angles - 1)
+		self.fuse_conv = nn.Sequential(
+			nn.Conv2d(out_planes_decoder, 256, kernel_size=fuse_kernel_size, stride=1, bias=False),
+			nn.GroupNorm(norm_groups, 256),
 			nn.ReLU(),
-			nn.Dropout(0.5))
-		self.reduce_layer2.apply(init_conv)
-
-		decoder_2_planes = [256+layer2_channels] + decoder_2_planes
-		self.decoder_2_net = create_convnet(nn.Conv2d, 
-										decoder_2_planes, 
-										decoder_2_kernel_size, 
-										padding(1, decoder_2_kernel_size), 
-										dilation=1, 
-										groups=norm_groups,)
-
-		self.decoder_2_clf = nn.Conv2d(decoder_2_planes[-1], 1, kernel_size=1, stride=1, bias=False)
-		init_conv(self.decoder_2_clf)
-
-
-	def _forward_dir(self, x, idx):
-		return forward_ori(self.ori_net, x, idx) + forward_ori(self.ori_net, x, idx+1)
+			nn.Dropout(0.1))
+		self.fuse_conv.apply(init_conv)
 
 
 	def eval(self,):
-		super(RoadsNetMultitask, self).eval()
+		super(RoadsNet, self).eval()
 		for module in self.ori_net._modules.values():
 			if isinstance(module, OrientedConv2d):
 				module.eval()
 
 
-	def trainable_parameters(self, base_lr, alfa=10,):
+	# def trainable_parameters(self, base_lr, alfa=10,):
 
-		params_groups_2 = list(super(RoadsNetMultitask, self).trainable_parameters())
+	# 	params_groups_2 = list(super(RoadsNetMultitask, self).trainable_parameters())
 
-		decoder_1_params = []
-		decoder_1_params += list(self.reduce_layer1.parameters())
-		decoder_1_params += list(self.ori_net.parameters())
-		decoder_1_params += list(self.decoder_1_clf.parameters())
+	# 	decoder_1_params = []
+	# 	decoder_1_params += list(self.reduce_layer1.parameters())
+	# 	decoder_1_params += list(self.ori_net.parameters())
+	# 	decoder_1_params += list(self.decoder_1_clf.parameters())
 
-		decoder_2_params = []
-		decoder_2_params += list(self.reduce_layer2.parameters())
-		decoder_2_params += list(self.decoder_2_net.parameters())
-		decoder_2_params += list(self.decoder_2_clf.parameters())
+	# 	decoder_2_params = []
+	# 	decoder_2_params += list(self.reduce_layer2.parameters())
+	# 	decoder_2_params += list(self.decoder_2_net.parameters())
+	# 	decoder_2_params += list(self.decoder_2_clf.parameters())
 
-		total_params_groups = [{'params': iter(decoder_1_params+decoder_2_params), 'lr': base_lr}]
-		if len(params_groups_2) > 0:
-			total_params_groups += [{'params': iter(params_groups_2), 'lr': base_lr / alfa}]
-		return total_params_groups
+	# 	total_params_groups = [{'params': iter(decoder_1_params+decoder_2_params), 'lr': base_lr}]
+	# 	if len(params_groups_2) > 0:
+	# 		total_params_groups += [{'params': iter(params_groups_2), 'lr': base_lr / alfa}]
+	# 	return total_params_groups
 
 
-	def forward_decoder1(self, x_aspp, x_layer1):
+	def forward_decoder(self, x_aspp, x_layer1):
 
 		layer1_size = x_layer1.shape[-2:]
 		x_layer1 = self.reduce_layer1(x_layer1)
@@ -199,32 +178,25 @@ class RoadsNetMultitask(Deeplabv3_Roads):
 
 		x_ori = []
 		for idx in np.arange(self.n_angles-1):
-			x_ori.append(self._forward_dir(x_concat, idx))
+			x_ori.append(forward_ori(self.ori_net, x_concat, idx))
 
-		return torch.cat(x_ori, dim=0)
-
-	
-	def forward_decoder2(self, x_aspp, x_layer2):
-		x_layer2 = self.reduce_layer2(x_layer2)
-		x_concat = torch.cat([x_layer2, x_aspp], dim=1)
-		return self.decoder_2_net(x_concat)
+		return self.fuse_conv(torch.cat(x_ori, dim=1))
 
 
 	def forward(self, inputs, return_intermediate=False):
 
 		input_shape = inputs["image"].shape[-2:]
-		features = super(RoadsNetMultitask, self).forward(inputs, return_intermediate=True)
+		features = super(RoadsNet, self).forward(inputs, return_intermediate=True)
 		x_aspp = features["aspp"]
-		x_out1 = self.forward_decoder1(x_aspp, features["layer1"])
-		x_out2 = self.forward_decoder2(x_aspp, features["layer2"])
-
-		seg_1 = compute_seg(x_out1, input_shape, self.decoder_1_clf).squeeze(1).unsqueeze(0)
-		seg_2 = compute_seg(x_out2, input_shape, self.decoder_2_clf).squeeze(1)
+		x_decoder = self.forward_decoder(x_aspp, features["layer1"])
+		seg = compute_seg(x_decoder, input_shape, self.classifier).squeeze(1)
 
 		result = OrderedDict()
+		result["binary_seg"] = OrderedDict()
 		if self.training:
-			result["seg_ori"] = seg_1
-			result["seg_roads"] = seg_2
+			result["binary_seg"]["seg"] = seg
+		else:
+			result["binary_seg"]["seg"] = (seg.squeeze(1) > 0).cpu()
 
 		return result
 

@@ -1,7 +1,6 @@
 test/
 *.pyc
 checkpoint/
-list/
 results/
 *.png
 *.jpg

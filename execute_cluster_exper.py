@@ -1,4 +1,4 @@
-from train_val_aux import main as train_val
+from train_val import main as train_val
 import argparse
 import os.path
 import pdb
@@ -26,7 +26,7 @@ def parse_args():
 	parser.add_argument('--config', type=str, required=True)
 	parser.add_argument('--exper_params', action=StoreDict, required=False, nargs='+')
 	parser.add_argument('--num_epochs', type=int, default=0)
-	parser.add_argument('--part', type=int, default=0)
+	parser.add_argument('--dataset', type=str, required=True)
 	return parser.parse_args()
 
 
@@ -64,4 +64,4 @@ if __name__ == "__main__":
 	
 	makedir(exper_checkpoint_dir)
 	
-	train_val(exper_config_path, args.num_epochs, use_cpu=False, part=args.part, root_checkpoint_dir=exper_checkpoint_dir)
+	train_val(exper_config_path, args.num_epochs, args.dataset, use_cpu=False, root_checkpoint_dir=exper_checkpoint_dir)

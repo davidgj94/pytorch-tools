@@ -1,0 +1,57 @@
+num_classes: 1
+
+# Training Configuration
+training:
+
+    batch_size: 1
+    display_iters: 1
+    iter_size: 20
+    learning_rate: 0.0005
+
+    # Dataset Configuration
+    dataset:
+        name: 'roads_dataset'
+        params:
+            root: "${DATASETS}/spacenet3"
+            augmentations:
+                - random_flip:
+                - random_crop:
+                      w: 600
+                      h: 600
+
+    # Model Configuration
+    model:
+        name: 'roads_net'
+        stride: 8
+        params:
+            angle_step: {angle_step}
+
+    tasks:
+        binary_seg:
+            loss: 'bce'
+
+# Validation Configuration
+validation:
+
+    batch_size: 1
+    val_epochs: 2
+
+    # Dataset Configuration
+    dataset:
+        name: 'roads_dataset'
+        params:
+            training: False
+            root: '/home/davidgj/projects/refactor_v2/spacenet3'
+
+    metric:
+        name: 'miou'
+        params:
+            task: 'binary_seg'
+            num_classes: 2
+
+    # Model Configuration
+    model:
+        name: 'roads_net'
+        stride: 8
+        params:
+            angle_step: {angle_step}
