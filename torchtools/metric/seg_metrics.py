@@ -5,9 +5,9 @@ from .register import register
 
 @register.attach('miou')
 class JaccardIndex(object):
-	def __init__(self, key, num_classes):
+	def __init__(self, task, num_classes):
 		self.n_classes = num_classes
-		self.key = key
+		self.key = task
 		self.confusion_matrix = np.zeros((self.n_classes, self.n_classes))
 
 	def _fast_hist(self, label_true, label_pred, n_class):

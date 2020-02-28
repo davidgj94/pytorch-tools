@@ -150,17 +150,20 @@ def main(config, num_epochs, dataset_name, use_cpu=False, max_failed_attemps=2, 
 	checkpoint_saver = CheckpointSaver(checkpoint_dir, current_epoch)
 	metric_saver = MetricSaver(val_cfg["metric"]["name"], checkpoint_dir, current_epoch)
 
-	for epoch in range(num_epochs):
-		print('Epoch {}/{}'.format(epoch, num_epochs - 1))
-		print('-' * 10)
-		train(model_train, 
-					train_dataloader, 
-					criterion, 
-					optimizer,
-					training_cfg)
-		scheduler.step()
-		if ( (epoch + 1) % val_cfg['val_epochs'] == 0 ) or ( epoch == (num_epochs - 1) ):
-			checkpoint_saver(epoch, model_train, optimizer)
+	if num_epochs > 0:
+		for epoch in range(num_epochs):
+			print('Epoch {}/{}'.format(epoch, num_epochs - 1))
+			print('-' * 10)
+			train(model_train, 
+						train_dataloader, 
+						criterion, 
+						optimizer,
+						training_cfg)
+			scheduler.step()
+			if ( (epoch + 1) % val_cfg['val_epochs'] == 0 ) or ( epoch == (num_epochs - 1) ):
+				checkpoint_saver(epoch, model_train, optimizer)
+	else:
+		epoch = 0
 
 	val_list_path = os.path.join('list', dataset_name, 'val.txt')
 	val_dataloader = get_dataloader(val_list_path, val_cfg['dataset'], val_cfg['batch_size'], shuffle=False)

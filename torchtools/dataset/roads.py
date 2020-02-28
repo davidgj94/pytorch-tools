@@ -41,6 +41,7 @@ class RoadsDataset(data.Dataset):
 			self.root = os.path.join(root, 'train')
 		else:
 			self.root = os.path.join(root, 'val')
+		self.root = os.path.expandvars(self.root)
 		self.treshold = treshold
 
 	def _load_data(self, idx):
@@ -68,11 +69,12 @@ class RoadsDataset(data.Dataset):
 		label = label.astype(np.float32)
 		image = image.numpy()
 
-		data = dict(image_id=image_id, image=image, label=label, weights=np.ones_like(label, dtype=np.float32), vis_image=vis_image)
-
-		if self.training:
-			junction_gt, junction_weights = compute_junction_gt(label)
-			data.update(junction_gt=junction_gt, junction_weights=junction_weights)
+		data = dict(image_id=image_id, 
+					image=image, 
+					label=label, 
+					vis_image=vis_image,
+					binary_seg=dict(label=label, 
+									weights=np.ones_like(label, dtype=np.float32)))
 		
 		return data
 
@@ -85,55 +87,55 @@ class RoadsDataset(data.Dataset):
 		return fmt_str
 
 
-@register.attach('roads_dataset_balanced')
-class RoadsDatasetBalanced(RoadsDataset):
-	def __init__(self, root, id_list_path, augmentations=[], training=True, treshold=0.76):
-		super(RoadsDatasetBalanced, self).__init__(root, id_list_path, augmentations=augmentations, training=training, treshold=treshold)
-		self.weights_path = os.path.join(str(Path(id_list_path).parent), 'sampling_weights.npy')
-		self.sampling_weights = self.compute_weights()
-		self.id_list_all = self.id_list.copy()
-		self.create_epoch_list()
+# @register.attach('roads_dataset_balanced')
+# class RoadsDatasetBalanced(RoadsDataset):
+# 	def __init__(self, root, id_list_path, augmentations=[], training=True, treshold=0.76):
+# 		super(RoadsDatasetBalanced, self).__init__(root, id_list_path, augmentations=augmentations, training=training, treshold=treshold)
+# 		self.weights_path = os.path.join(str(Path(id_list_path).parent), 'sampling_weights.npy')
+# 		self.sampling_weights = self.compute_weights()
+# 		self.id_list_all = self.id_list.copy()
+# 		self.create_epoch_list()
 
-	def create_epoch_list(self,):
-		indices = torch.multinomial(self.sampling_weights, len(self), replacement=True).numpy()
-		self.id_list = self.id_list_all[indices]
+# 	def create_epoch_list(self,):
+# 		indices = torch.multinomial(self.sampling_weights, len(self), replacement=True).numpy()
+# 		self.id_list = self.id_list_all[indices]
 
-	def compute_weights(self,):
+# 	def compute_weights(self,):
 
-		if os.path.exists(self.weights_path):
-			sampling_weights = np.load(self.weights_path)
-			return torch.Tensor(sampling_weights)
+# 		if os.path.exists(self.weights_path):
+# 			sampling_weights = np.load(self.weights_path)
+# 			return torch.Tensor(sampling_weights)
 
-		sampling_weights = []
-		_, _, label = self._load_data(0)
-		H, W = label.shape
-		bandwidth = 100 / np.sqrt(H * W)
-		ms = MeanShift(bandwidth=bandwidth)
-		margin_mask = np.zeros_like(label, dtype=np.uint8)
-		margin_h = int(0.1 * H)
-		margin_w = int(0.1 * W)
-		margin_mask[margin_h:-margin_h, margin_w:-margin_w] = 1
-		for idx in tqdm(np.arange(len(self)), ncols=100, total=len(self)):
-			_, _, label = self._load_data(idx)
-			skel = skeletonize(label)
-			bp = find_branch_points(skel)
-			bp *= margin_mask
-			if np.all(bp < 1):
-				sampling_weights.append(1)
-				continue
-			coords = extract_coords(bp, normalize=True)
-			ms.fit(coords)
-			n_junctions = len(ms.cluster_centers_)
-			sampling_weights.append(n_junctions)
-		sampling_weights = np.array(sampling_weights, dtype=np.float32)
-		sampling_weights = np.clip(sampling_weights, a_min=1.0, a_max=15.0)
-		sampling_weights /= sampling_weights.sum()
-		np.save(self.weights_path, sampling_weights)
+# 		sampling_weights = []
+# 		_, _, label = self._load_data(0)
+# 		H, W = label.shape
+# 		bandwidth = 100 / np.sqrt(H * W)
+# 		ms = MeanShift(bandwidth=bandwidth)
+# 		margin_mask = np.zeros_like(label, dtype=np.uint8)
+# 		margin_h = int(0.1 * H)
+# 		margin_w = int(0.1 * W)
+# 		margin_mask[margin_h:-margin_h, margin_w:-margin_w] = 1
+# 		for idx in tqdm(np.arange(len(self)), ncols=100, total=len(self)):
+# 			_, _, label = self._load_data(idx)
+# 			skel = skeletonize(label)
+# 			bp = find_branch_points(skel)
+# 			bp *= margin_mask
+# 			if np.all(bp < 1):
+# 				sampling_weights.append(1)
+# 				continue
+# 			coords = extract_coords(bp, normalize=True)
+# 			ms.fit(coords)
+# 			n_junctions = len(ms.cluster_centers_)
+# 			sampling_weights.append(n_junctions)
+# 		sampling_weights = np.array(sampling_weights, dtype=np.float32)
+# 		sampling_weights = np.clip(sampling_weights, a_min=1.0, a_max=15.0)
+# 		sampling_weights /= sampling_weights.sum()
+# 		np.save(self.weights_path, sampling_weights)
 
-		return torch.Tensor(sampling_weights)
+# 		return torch.Tensor(sampling_weights)
 	
-	def __getitem__(self, index):
-		data = super(RoadsDatasetBalanced, self).__getitem__(index)
-		if index == (len(self) - 1):
-			self.create_epoch_list()
-		return data
+# 	def __getitem__(self, index):
+# 		data = super(RoadsDatasetBalanced, self).__getitem__(index)
+# 		if index == (len(self) - 1):
+# 			self.create_epoch_list()
+# 		return data

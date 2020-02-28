@@ -37,7 +37,7 @@ class Deeplabv3(nn.Module):
 	def get_device(self,):
 		return self.classifier.weight.device
 
-	def trainable_parameters(self, debug=False):
+	def trainable_parameters(self, debug=True, base_lr=None):
 		_params = []
 		for name, param in self.named_parameters():
 			if param.requires_grad:
@@ -111,10 +111,11 @@ class Deeplabv3Plus(Deeplabv3):
 			x = F.interpolate(features["decoder"], size=input_shape, mode='bilinear', align_corners=False)
 			seg = self.classifier(x)
 
+			result["binary_seg"] = OrderedDict()
 			if not self.training:
-				result["seg"] = (seg.squeeze(1) > 0).cpu()
+				result["binary_seg"]["seg"] = (seg.squeeze(1) > 0).cpu()
 			else:
-				result["seg_roads"] = seg.squeeze(1)
+				result["binary_seg"]["seg"] = seg.squeeze(1)
 				
 			return result
 
