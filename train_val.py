@@ -149,6 +149,7 @@ def main(config, num_epochs, dataset_name, use_cpu=False, max_failed_attemps=2, 
 	scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
 	checkpoint_saver = CheckpointSaver(checkpoint_dir, current_epoch)
 	metric_saver = MetricSaver(val_cfg["metric"]["name"], checkpoint_dir, current_epoch)
+	pdb.set_trace()
 
 	for epoch in range(num_epochs):
 		print('Epoch {}/{}'.format(epoch, num_epochs - 1))
