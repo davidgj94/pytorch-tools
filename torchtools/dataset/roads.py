@@ -20,6 +20,7 @@ from scipy import ndimage
 import pickle
 from pathlib import Path
 from torchtools.road_utils.junction import compute_junction_gt, find_branch_points, extract_coords, test_branch_points
+from torchtools.road_utils.affinity_utils import getKeypoints, convertVecMap2Angles
 from skimage.morphology import medial_axis as skeletonize
 from sklearn.cluster import MeanShift
 from torchtools.utils import timeit
@@ -30,20 +31,23 @@ class RoadsDataset(data.Dataset):
 	"""
 	Base dataset class
 	"""
-	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=False, treshold=0.76):
+	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=False, angle_step=15.0, treshold=0.76):
 
 		self.id_list = np.loadtxt(id_list_path, dtype=str)
 		self.mean = [0.485, 0.456, 0.406]
 		self.var = [0.229, 0.224, 0.225]
 		self.augmentations = Compose(augmentations)
 		self.training = training
-		self.train_ori = train_ori
 		if self.training:
 			self.root = os.path.join(root, 'train')
 		else:
 			self.root = os.path.join(root, 'val')
 		self.root = os.path.expandvars(self.root)
 		self.treshold = treshold
+
+		self.train_ori = train_ori
+		if self.train_ori:
+			self.angle_step = angle_step
 
 	def _load_data(self, idx):
 		"""
@@ -73,9 +77,15 @@ class RoadsDataset(data.Dataset):
 		data = dict(image_id=image_id, 
 					image=image, 
 					label=label, 
-					vis_image=vis_image,
-					binary_seg=dict(label=label, 
-									weights=np.ones_like(label, dtype=np.float32)))
+					vis_image=vis_image,)
+
+		data.update(binary_seg=dict(label=label, weights=np.ones_like(label, dtype=np.float32)))
+
+		if self.training and self.train_ori:
+			keypoints = getKeypoints(label, is_gaussian=False)
+			ori_gt, ori_weights = convertVecMap2Angles(label.shape, keypoints, bin_size=self.angle_step)
+			data.update(ori_seg=dict(label=ori_gt, weights=ori_weights))
+
 		return data
 
 	def __len__(self):
