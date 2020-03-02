@@ -20,7 +20,7 @@ from scipy import ndimage
 import pickle
 from pathlib import Path
 from torchtools.road_utils.junction import compute_junction_gt, find_branch_points, extract_coords, test_branch_points
-from torchtools.road_utils.affinity_utils import getKeypoints, convertVecMap2Angles
+from torchtools.road_utils.affinity_utils import getKeypoints, getVectorMapsAngles
 from skimage.morphology import medial_axis as skeletonize
 from sklearn.cluster import MeanShift
 from torchtools.utils import timeit
@@ -83,8 +83,23 @@ class RoadsDataset(data.Dataset):
 
 		if self.training and self.train_ori:
 			keypoints = getKeypoints(label, is_gaussian=False)
-			ori_gt, ori_weights = convertVecMap2Angles(label.shape, keypoints, bin_size=self.angle_step)
+			ori_gt, ori_weights = getVectorMapsAngles(label.shape, keypoints, theta=10, bin_size=self.angle_step)
 			data.update(ori_seg=dict(label=ori_gt, weights=ori_weights))
+		
+			# for idx in np.arange(len(ori_weights)):
+			# 	_ori_weights = ori_weights[idx]
+			# 	_ori_gt = ori_gt[idx]
+			# 	if not np.all(_ori_weights < 1.0):
+			# 		plt.figure()
+			# 		plt.imshow(_ori_gt)
+			# 		plt.figure()
+			# 		plt.imshow(_ori_weights)
+			# 		plt.figure()
+			# 		plt.imshow(label)
+			# 		plt.show()
+
+		
+
 
 		return data
 

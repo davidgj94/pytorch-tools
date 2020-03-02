@@ -146,7 +146,9 @@ def getVectorMapsAngles(shape, keypoints, theta=5, bin_size=10, margin=0.1):
 	ori_weights[max_idx, margin_h:-margin_h, margin_w:-margin_w] = 1.0
 	prev_idx = max_idx - 1
 	next_idx = (max_idx + 1) % (n_angles - 1)
-	ori_weights[max_idx] -= np.clip(ori_gt[prev_idx] + ori_gt[next_idx] - ori_gt[max_idx], a_min=None, a_max=1.0)
+	ignore = np.clip(ori_gt[prev_idx] + ori_gt[next_idx], a_min=None, a_max=1.0)
+	ignore = np.clip(ignore - ori_gt[max_idx], a_min=0.0, a_max=None)
+	ori_weights[max_idx] -= ignore
 
 	return ori_gt, ori_weights
 

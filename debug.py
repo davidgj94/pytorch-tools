@@ -16,8 +16,6 @@ from argparse import ArgumentParser
 from torchsummary import summary
 from torchtools.save import CheckpointSaver
 from pathlib import Path
-from val import validate
-from train import train
 import matplotlib.pyplot as plt
 
 def parse_args():
@@ -35,7 +33,7 @@ if __name__ == "__main__":
 	args = parse_args()
 	num_classes, training_cfg, val_cfg = utils.get_cfgs(args.config)
 	dataset_params = training_cfg["dataset"]["params"]
-	id_list_path = os.path.join('list', 'partition_0', 'train.txt')
+	id_list_path = os.path.join('list', 'spacenet', 'train.txt')
 	dataset_params.update(id_list_path=id_list_path)
 	dataset = get_dataset(training_cfg["dataset"]['name'])(**dataset_params)
 	model = get_model(num_classes, training_cfg['model'])
