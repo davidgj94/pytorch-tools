@@ -30,13 +30,14 @@ class RoadsDataset(data.Dataset):
 	"""
 	Base dataset class
 	"""
-	def __init__(self, root, id_list_path, augmentations=[], training=True, treshold=0.76):
+	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=False, treshold=0.76):
 
 		self.id_list = np.loadtxt(id_list_path, dtype=str)
 		self.mean = [0.485, 0.456, 0.406]
 		self.var = [0.229, 0.224, 0.225]
 		self.augmentations = Compose(augmentations)
 		self.training = training
+		self.train_ori = train_ori
 		if self.training:
 			self.root = os.path.join(root, 'train')
 		else:
@@ -75,7 +76,6 @@ class RoadsDataset(data.Dataset):
 					vis_image=vis_image,
 					binary_seg=dict(label=label, 
 									weights=np.ones_like(label, dtype=np.float32)))
-		
 		return data
 
 	def __len__(self):

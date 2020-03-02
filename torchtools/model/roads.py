@@ -99,7 +99,7 @@ class RoadsNet(Deeplabv3_Roads):
 	def __init__(self, n_classes, pretrained_model,
 					min_angle=0.0, max_angle=180.0, angle_step=15.0,
 					layer1_channels=48, decoder_grid_size=7, decoder_planes=[128, 64, 32],
-					fuse_kernel_size=5, norm_groups=8, freeze_backbone=False, freeze_aspp=False,):
+					fuse_kernel_size=5, norm_groups=8, freeze_backbone=False, freeze_aspp=False, train_ori=False):
 
 		super(RoadsNet, self).__init__(n_classes, pretrained_model, 
 													freeze_backbone=freeze_backbone,
@@ -128,6 +128,11 @@ class RoadsNet(Deeplabv3_Roads):
 										min_angle=min_angle,
 										max_angle=max_angle,
 										angle_step=angle_step)
+
+		self.aux_clf_ori = None
+		if train_ori:
+			self.aux_clf_ori = nn.Conv2d(decoder_planes[-1], 1, kernel_size=1, stride=1, bias=False)
+			init_conv(self.aux_clf_ori)
 
 		out_planes_decoder = decoder_planes[-1] * (self.n_angles - 1)
 		self.fuse_conv = nn.Sequential(
@@ -175,8 +180,9 @@ class RoadsNet(Deeplabv3_Roads):
 		x_ori = []
 		for idx in np.arange(self.n_angles-1):
 			x_ori.append(forward_ori(self.ori_net, x_concat, idx))
+		x_ori.append(forward_ori(self.ori_net, x_concat, 0))
 
-		return self.fuse_conv(torch.cat(x_ori, dim=1))
+		return x_ori
 
 
 	def forward(self, inputs, return_intermediate=False):
@@ -185,12 +191,22 @@ class RoadsNet(Deeplabv3_Roads):
 		features = super(RoadsNet, self).forward(inputs, return_intermediate=True)
 		x_aspp = features["aspp"]
 		x_decoder = self.forward_decoder(x_aspp, features["layer1"])
-		seg = compute_seg(x_decoder, input_shape, self.classifier).squeeze(1)
+
+		if self.aux_clf_ori is not None:
+			x_decoder_aux = torch.cat(x_decoder, dim=0)
+			x_decoder_sum = x_decoder_aux[:-1] + x_decoder_aux[1:]
+			seg_aux = compute_seg(x_decoder_sum, input_shape, self.aux_clf_ori).squeeze(1).unsqueeze(0)
+
+		x_decoder_concat = torch.cat(x_decoder[:-1], dim=1)
+		x_fuse = self.fuse_conv(x_decoder_concat)
+		seg = compute_seg(x_fuse, input_shape, self.classifier).squeeze(1)
 
 		result = OrderedDict()
 		result["binary_seg"] = OrderedDict()
 		if self.training:
 			result["binary_seg"]["seg"] = seg
+			if self.aux_clf_ori is not None:
+				result["ori_seg"]["seg"] = seg_aux
 		else:
 			result["binary_seg"]["seg"] = (seg.squeeze(1) > 0).cpu()
 
