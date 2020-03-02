@@ -45,8 +45,8 @@ def get_dataloader(id_list_path, dataset_cfg, batch_size, shuffle=True):
 
 def parse_args():
 	parser = ArgumentParser()
-	parser.add_argument('--config', type=str, required=True, nargs='+')
-	parser.add_argument('--parts', type=int, required=True, nargs='+')
+	parser.add_argument('--config', type=str, required=True)
+	parser.add_argument('--dataset', type=str, required=True)
 	parser.add_argument('--epoch', type=int)
 	parser.add_argument('-train', dest='train', action='store_true')
 	parser.set_defaults(train=False)
@@ -70,23 +70,19 @@ def validate(val_model, val_loader, result_saver):
 		
 	result_saver.save_metrics()
 
-def main(config_path, part, epoch=None, val=True, use_cpu=False):
+def main(config_path, dataset_name, epoch=None, val=True, use_cpu=False):
 
-	id_list_path = os.path.join('list', 'partition_{}'.format(part), 'val.txt' if val else 'train.txt')
+	id_list_path = os.path.join('list', dataset_name, 'val.txt' if val else 'train.txt')
 	exper_name = os.path.basename(config_path).split(".")[0]
-	root_checkpoint_dir = os.path.join('checkpoint', 'partition_{}'.format(part))
+	root_checkpoint_dir = os.path.join('checkpoint', dataset_name)
 	checkpoint_dir = os.path.join(root_checkpoint_dir, exper_name)
 
 	num_classes, training_cfg, val_cfg = utils.get_cfgs(config_path)
 	device = torch.device("cuda:0" if torch.cuda.is_available() and not use_cpu else "cpu")
 
 	model_train = get_model(num_classes, training_cfg["model"]).to(device)
-
-	val_expers = {}
-	for _val_exper in val_cfg['val_expers']:
-		model_val = get_model(num_classes, _val_exper["model"]).to(device)
-		val_dataloader = get_dataloader(id_list_path, _val_exper['dataset'], val_cfg['batch_size'], shuffle=False)
-		val_expers[_val_exper['name']] = dict(model_val=model_val, val_dataloader=val_dataloader)
+	val_model = get_model(num_classes, val_cfg["model"]).to(device)
+	val_dataloader = get_dataloader(id_list_path, val_cfg['dataset'], val_cfg['batch_size'], shuffle=False)
 
 	if epoch is not None:
 		last_checkpoint_path = os.path.join(checkpoint_dir, "epoch_{}.pth".format(epoch))
@@ -100,24 +96,18 @@ def main(config_path, part, epoch=None, val=True, use_cpu=False):
 		print("CHECKPOINT: {}".format(last_checkpoint_path))
 	else:
 		current_epoch = 0
+	
+	val_model.load_state_dict(model_train.state_dict(), strict=False)
 
-	result_dir = os.path.join('results', 'partition_{}'.format(part), exper_name, 'epoch_{}'.format(current_epoch))
-	for val_exper_name, val_exper in val_expers.items():
-		print('>> {}'.format(val_exper_name))
-		val_model, val_dataloader = val_exper['model_val'], val_exper['val_dataloader']
-		val_model.load_state_dict(model_train.state_dict(), strict=False)
-		metric = RunningScore(2, pred_name='seg', label_name='label')
-		vis_saver = SegVisSaver(2, pred_name='seg', label_name='vis_image')
-		vis_saver_label = SegVisSaver(2, pred_name='label', label_name='vis_image')
-		result_saver = ResultsSaver(result_dir, metrics=dict(iou=metric), vis_savers=dict(vis=vis_saver, vis_saver_label=vis_saver_label))
-		# result_saver = ResultsSaver(result_dir, metrics=dict(angle_metric=angle_metric))
-		validate(val_model, val_dataloader, result_saver)
-
+	result_dir = os.path.join('results', dataset_name, exper_name, 'epoch_{}'.format(current_epoch))
+	metric = RunningScore(2, pred_name='seg', label_name='label')
+	vis_saver = SegVisSaver(2, pred_name='seg', label_name='vis_image')
+	vis_saver_label = SegVisSaver(2, pred_name='label', label_name='vis_image')
+	result_saver = ResultsSaver(result_dir, metrics=dict(iou=metric), vis_savers=dict(vis=vis_saver, vis_saver_label=vis_saver_label))
+	validate(val_model, val_dataloader, result_saver)
 
 
 if __name__ == "__main__":
 
 	args = parse_args()
-	for part in args.parts:
-		for config_path in args.config:
-			main(config_path, part, args.epoch, val=(not args.train))
+	main(args.config, args.dataset, args.epoch, val=(not args.train))
