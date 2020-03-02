@@ -206,6 +206,7 @@ class RoadsNet(Deeplabv3_Roads):
 		if self.training:
 			result["binary_seg"]["seg"] = seg
 			if self.aux_clf_ori is not None:
+				result["ori_seg"] = OrderedDict()
 				result["ori_seg"]["seg"] = seg_aux
 		else:
 			result["binary_seg"]["seg"] = (seg.squeeze(1) > 0).cpu()

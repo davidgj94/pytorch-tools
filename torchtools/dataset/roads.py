@@ -98,9 +98,6 @@ class RoadsDataset(data.Dataset):
 			# 		plt.imshow(label)
 			# 		plt.show()
 
-		
-
-
 		return data
 
 	def __len__(self):
