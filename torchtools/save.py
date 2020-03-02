@@ -123,7 +123,7 @@ class MetricSaver:
 				self.metrics = json.load(f)
 		else:
 			self.metrics = {}
-		self.start_epoch = start_epoch
+		self.start_epoch = start_epoch + 1
 	
 	def __call__(self, epoch, last_metric):
 

@@ -183,9 +183,7 @@ def main(config, num_epochs, dataset_name, use_cpu=False, max_failed_attemps=2, 
 			criterion, 
 			optimizer,
 			training_cfg)
-
 		scheduler.step()
-		epoch += 1
 
 		if (epoch + 1) % val_cfg['val_epochs'] == 0:
 
@@ -200,10 +198,11 @@ def main(config, num_epochs, dataset_name, use_cpu=False, max_failed_attemps=2, 
 				checkpoint_saver(epoch, model_train, optimizer)
 				num_failed_attemps = 0
 			else:
-				if num_failed_attemps < max_failed_attemps:
-					num_failed_attemps += 1
-				else:
+				num_failed_attemps += 1
+				if num_failed_attemps >= max_failed_attemps:
 					break
+
+		epoch += 1
 
 
 if __name__ == "__main__":
