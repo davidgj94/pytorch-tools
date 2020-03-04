@@ -189,6 +189,9 @@ class RoadsNet(Deeplabv3_Roads):
 
 		input_shape = inputs["image"].shape[-2:]
 		features = super(RoadsNet, self).forward(inputs, return_intermediate=True)
+		if return_intermediate:
+			return features
+
 		x_aspp = features["aspp"]
 		x_decoder = self.forward_decoder(x_aspp, features["layer1"])
 
@@ -200,6 +203,96 @@ class RoadsNet(Deeplabv3_Roads):
 		x_decoder_concat = torch.cat(x_decoder[:-1], dim=1)
 		x_fuse = self.fuse_conv(x_decoder_concat)
 		seg = compute_seg(x_fuse, input_shape, self.classifier).squeeze(1)
+
+		result = OrderedDict()
+		result["binary_seg"] = OrderedDict()
+		if self.training:
+			result["binary_seg"]["seg"] = seg
+			if self.aux_clf_ori is not None:
+				result["ori_seg"] = OrderedDict()
+				result["ori_seg"]["seg"] = seg_aux
+		else:
+			result["binary_seg"]["seg"] = (seg.squeeze(1) > 0).cpu()
+
+		return result
+
+@register.attach('roads_net_v2')
+class RoadsNet_v2(RoadsNet):
+	def __init__(self, n_classes, pretrained_model,
+					angle_step=15.0, decoder_planes=[128, 64, 32], fuse_kernel_size=5, out_fuse_channels=128, 
+					freeze_backbone=False, freeze_aspp=False, train_ori=False, norm_groups=8, layer1_channels=48):
+
+		super(RoadsNet_v2, self).__init__(n_classes, pretrained_model, angle_step=angle_step, 
+											decoder_planes=decoder_planes, fuse_kernel_size=fuse_kernel_size, 
+											freeze_backbone=freeze_backbone, freeze_aspp=freeze_aspp, train_ori=train_ori, 
+											norm_groups=norm_groups, layer1_channels=layer1_channels)
+
+		fine_net_planes = [layer1_channels + 256, 256, 256]
+		fine_net_kernel_size = 3
+		self.fine_net = create_convnet(nn.Conv2d, 
+										fine_net_planes, 
+										fine_net_kernel_size, 
+										padding(1, fine_net_kernel_size), 
+										dilation=1, 
+										groups=norm_groups)
+		
+		out_planes_decoder = decoder_planes[-1] * (self.n_angles - 1)
+		self.fuse_conv = nn.Sequential(
+			nn.Conv2d(out_planes_decoder, out_fuse_channels, 
+						kernel_size=fuse_kernel_size, 
+						stride=1, 
+						padding=padding(1, fuse_kernel_size), 
+						bias=False),
+			nn.GroupNorm(norm_groups, out_fuse_channels),
+			nn.ReLU(),
+			nn.Dropout(0.5))
+		self.fuse_conv.apply(init_conv)
+
+		self.fuse_branches =  nn.Sequential(
+			nn.Conv2d(out_fuse_channels + 256, 256, 
+						kernel_size=fuse_kernel_size, 
+						stride=1, 
+						padding=padding(1, fuse_kernel_size), 
+						bias=False),
+			nn.GroupNorm(norm_groups, 256),
+			nn.ReLU(),
+			nn.Dropout(0.1))
+		self.fuse_branches.apply(init_conv)
+
+
+	def forward_decoders(self, x_aspp, x_layer1):
+
+		layer1_size = x_layer1.shape[-2:]
+		x_layer1 = self.reduce_layer1(x_layer1)
+		x_aspp_up = F.interpolate(x_aspp, size=layer1_size, mode='bilinear', align_corners=False)
+		x_concat = torch.cat([x_layer1, x_aspp_up], dim=1)
+
+		x_fine = self.fine_net(x_concat)
+
+		x_ori = []
+		for idx in np.arange(self.n_angles-1):
+			x_ori.append(forward_ori(self.ori_net, x_concat, idx))
+		x_ori.append(forward_ori(self.ori_net, x_concat, 0))
+
+		return x_ori, x_fine
+	
+	def forward(self, inputs):
+
+		input_shape = inputs["image"].shape[-2:]
+		features = super(RoadsNet_v2, self).forward(inputs, return_intermediate=True)
+		x_aspp = features["aspp"]
+		x_ori, x_fine = self.forward_decoders(x_aspp, features["layer1"])
+
+		if self.aux_clf_ori is not None:
+			x_ori_aux = torch.cat(x_ori, dim=0)
+			x_ori_sum = x_ori_aux[:-1] + x_ori_aux[1:]
+			aux_label_size = inputs["ori_seg"]["label"].shape[-2:]
+			seg_aux = compute_seg(x_ori_sum, aux_label_size, self.aux_clf_ori).squeeze(1).unsqueeze(0)
+
+		x_ori = self.fuse_conv(torch.cat(x_ori[:-1], dim=1))
+		x_concat_branches = torch.cat([x_ori, x_fine], dim=1)
+		x_fuse_branches = self.fuse_branches(x_concat_branches)
+		seg = compute_seg(x_fuse_branches, input_shape, self.classifier).squeeze(1)
 
 		result = OrderedDict()
 		result["binary_seg"] = OrderedDict()

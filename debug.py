@@ -37,5 +37,6 @@ if __name__ == "__main__":
 	dataset_params.update(id_list_path=id_list_path)
 	dataset = get_dataset(training_cfg["dataset"]['name'])(**dataset_params)
 	model = get_model(num_classes, training_cfg['model'])
+	pdb.set_trace()
 	_test(dataset, model)
 	print("Done")

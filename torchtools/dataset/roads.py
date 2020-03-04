@@ -31,7 +31,7 @@ class RoadsDataset(data.Dataset):
 	"""
 	Base dataset class
 	"""
-	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=False, angle_step=15.0, treshold=0.76):
+	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=False, down_label=False, angle_step=15.0, treshold=0.76):
 
 		self.id_list = np.loadtxt(id_list_path, dtype=str)
 		self.mean = [0.485, 0.456, 0.406]
@@ -46,6 +46,7 @@ class RoadsDataset(data.Dataset):
 		self.treshold = treshold
 
 		self.train_ori = train_ori
+		self.down_label = down_label
 		if self.train_ori:
 			self.angle_step = angle_step
 
@@ -82,10 +83,24 @@ class RoadsDataset(data.Dataset):
 		data.update(binary_seg=dict(label=label, weights=np.ones_like(label, dtype=np.float32)))
 
 		if self.training and self.train_ori:
-			keypoints = getKeypoints(label, is_gaussian=False)
-			ori_gt, ori_weights = getVectorMapsAngles(label.shape, keypoints, theta=10, bin_size=self.angle_step)
+
+			if self.down_label:
+				width, height = label.shape
+				label_down = cv2.resize(label.astype(np.uint8), (int(width / 4), int(height / 4)), interpolation=cv2.INTER_NEAREST,)
+				keypoints = getKeypoints(label_down, is_gaussian=False, smooth_dist=5)
+				ori_gt, ori_weights = getVectorMapsAngles(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
+			else:
+				keypoints = getKeypoints(label, is_gaussian=False)
+				ori_gt, ori_weights = getVectorMapsAngles(label.shape, keypoints, theta=10, bin_size=self.angle_step)
+
 			data.update(ori_seg=dict(label=ori_gt, weights=ori_weights))
-		
+
+			# ori_gt_sum = np.clip(ori_gt.sum(0), a_min=0.0, a_max=1.0)
+			# plt.figure()
+			# plt.imshow(label_down)
+			# plt.figure()
+			# plt.imshow(ori_gt_sum)
+			# plt.show()
 			# for idx in np.arange(len(ori_weights)):
 			# 	_ori_weights = ori_weights[idx]
 			# 	_ori_gt = ori_gt[idx]

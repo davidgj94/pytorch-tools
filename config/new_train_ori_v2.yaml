@@ -14,7 +14,8 @@ training:
         params:
             root: "$DATASETS/spacenet"
             train_ori: True
-            angle_step: 20.0
+            down_label: True
+            angle_step: 15.0
             augmentations:
                 - random_flip:
                 - random_crop:
@@ -23,18 +24,19 @@ training:
 
     # Model Configuration
     model:
-        name: 'roads_net'
+        name: 'roads_net_v2'
         stride: 8
         params:
             train_ori: True
-            angle_step: 20.0
+            angle_step: 15.0
 
     tasks:
         binary_seg:
             loss: 'bce'
+            weight: 0.8
         ori_seg:
             loss: 'bce'
-            weight: 0.5
+            weight: 0.2
 
 # Validation Configuration
 validation:
@@ -57,10 +59,10 @@ validation:
 
     # Model Configuration
     model:
-        name: 'roads_net'
+        name: 'roads_net_v2'
         stride: 8
         params:
-            angle_step: 20.0
+            angle_step: 15.0
 
 # test:
 
