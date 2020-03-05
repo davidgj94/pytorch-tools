@@ -153,6 +153,80 @@ def getVectorMapsAngles(shape, keypoints, theta=5, bin_size=10, margin=0.1):
 	return ori_gt, ori_weights
 
 
+def getVectorMapsAngles_v2(shape, keypoints, theta=5, bin_size=10):
+	"""
+	Convert Road keypoints obtained from road mask to orientation angle mask.
+	Reference: Section 3.1
+		https://anilbatra2185.github.io/papers/RoadConnectivityCVPR2019.pdf
+
+	@param shape: Road Label/PIL image shape i.e. H x W
+	@param keypoints: road keypoints generated from Road mask using
+						function getKeypoints()
+	@param theta: thickness width for orientation vectors, it is similar to
+					thicknes of road width with which mask is generated.
+	@param bin_size: Bin size to quantize the Orientation angles.
+
+	@return: Retun ndarray of shape H x W, containing orientation angles per pixel.
+	"""
+
+	height, width = shape
+	anchor_angles = np.arange(0.0, 180.0 + bin_size, bin_size)
+	n_angles = len(anchor_angles)
+	ori_gt = np.zeros((n_angles,) + shape, dtype=np.float32)
+	if len(keypoints) < 2:
+		return ori_gt[:-1]
+
+	rectangle_angles = []
+	rectangle_masks = []
+	for j in range(len(keypoints)):
+		for i in range(1, len(keypoints[j])):
+
+			a = keypoints[j][i - 1]
+			b = keypoints[j][i]
+			ax, ay = a[0], a[1]
+			bx, by = b[0], b[1]
+			bax = bx - ax
+			bay = by - ay
+			norm = math.sqrt(1.0 * bax * bax + bay * bay) + 1e-9
+			bax /= norm
+			bay /= norm
+
+			min_w = max(int(round(min(ax, bx) - theta)), 0)
+			max_w = min(int(round(max(ax, bx) + theta)), width)
+			min_h = max(int(round(min(ay, by) - theta)), 0)
+			max_h = min(int(round(max(ay, by) + theta)), height)
+
+			_theta = math.degrees(math.atan2(bay, bax))
+			_theta = (_theta -90) % 180
+			rectangle_angles.append(_theta)
+
+			_mask = np.zeros(shape, dtype=np.float32)
+			for h in range(min_h, max_h):
+				for w in range(min_w, max_w):
+					px = w - ax
+					py = h - ay
+					dis = abs(bax * py - bay * px)
+					if dis <= theta:
+						_mask[h, w] = 1.0
+			rectangle_masks.append(_mask)
+
+	rectangle_angles = np.array(rectangle_angles)
+	rectangle_masks = np.stack(rectangle_masks, axis=0)
+	max_angle_dist = bin_size
+	for idx, anchor in enumerate(anchor_angles):
+		angle_dists = np.abs(rectangle_angles - anchor)
+		ori_gt[idx] = merge_masks(rectangle_masks, angle_dists < max_angle_dist)
+	ori_gt[0] = np.clip(ori_gt[0] + ori_gt[-1], a_min=None, a_max=1.0)
+
+	# for idx, angle in enumerate(anchor_angles[:-1]):
+	# 	plt.figure()
+	# 	plt.imshow(ori_gt[idx])
+	# 	plt.title("angle:{}".format(angle))
+	# plt.show()
+
+	return ori_gt[:-1]
+
+
 def convertAngles2VecMap(shape, vecmapAngles):
 	"""
 	Helper method to convert Orientation angles mask to Orientation vectors.

@@ -20,7 +20,7 @@ from scipy import ndimage
 import pickle
 from pathlib import Path
 from torchtools.road_utils.junction import compute_junction_gt, find_branch_points, extract_coords, test_branch_points
-from torchtools.road_utils.affinity_utils import getKeypoints, getVectorMapsAngles
+from torchtools.road_utils.affinity_utils import getKeypoints, getVectorMapsAngles, getVectorMapsAngles_v2
 from skimage.morphology import medial_axis as skeletonize
 from sklearn.cluster import MeanShift
 from torchtools.utils import timeit
@@ -88,6 +88,7 @@ class RoadsDataset(data.Dataset):
 				width, height = label.shape
 				label_down = cv2.resize(label.astype(np.uint8), (int(width / 4), int(height / 4)), interpolation=cv2.INTER_NEAREST,)
 				keypoints = getKeypoints(label_down, is_gaussian=False, smooth_dist=5)
+				getVectorMapsAngles_v2(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
 				ori_gt, ori_weights = getVectorMapsAngles(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
 			else:
 				keypoints = getKeypoints(label, is_gaussian=False)
@@ -122,6 +123,34 @@ class RoadsDataset(data.Dataset):
 		fmt_str = "     Dataset: " + self.__class__.__name__ + "\n"
 		fmt_str += "    Root: {}".format(self.root)
 		return fmt_str
+
+@register.attach('roads_dataset_v2')
+class RoadsDataset_v2(RoadsDataset):
+	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=False, down_label=False, angle_step=15.0, treshold=0.76):
+		super(RoadsDataset_v2, self).__init__(root, id_list_path, augmentations=augmentations, 
+																	training=training, 
+																	train_ori=False, 
+																	down_label=down_label,
+																	treshold=treshold)
+		self.angle_step = angle_step
+
+	def __getitem__(self, index):
+		data = super(RoadsDataset_v2, self).__getitem__(index)
+		label = data['binary_seg']['label']
+		# plt.figure()
+		# plt.imshow(label)
+		if self.training:
+			if self.down_label:
+				width, height = label.shape
+				label_down = cv2.resize(label.astype(np.uint8), (int(width / 4), int(height / 4)), interpolation=cv2.INTER_NEAREST,)
+				keypoints = getKeypoints(label_down, is_gaussian=False, smooth_dist=3.5)
+				ori_gt = getVectorMapsAngles_v2(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
+			else:
+				keypoints = getKeypoints(label, is_gaussian=False)
+				ori_gt = getVectorMapsAngles_v2(label.shape, keypoints, theta=10, bin_size=self.angle_step)
+			data.update(ori_seg=dict(label=ori_gt, weights=np.ones_like(ori_gt, dtype=np.float32)))
+		return data
+
 
 
 # @register.attach('roads_dataset_balanced')

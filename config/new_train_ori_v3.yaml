@@ -1,0 +1,81 @@
+num_classes: 1
+
+# Training Configuration
+training:
+
+    batch_size: 1
+    display_iters: 1
+    iter_size: 20
+    learning_rate: 0.001
+
+    # Dataset Configuration
+    dataset:
+        name: 'roads_dataset_v2'
+        params:
+            root: "$DATASETS/spacenet"
+            down_label: True
+            angle_step: 20.0
+            augmentations:
+                - random_flip:
+                - random_crop:
+                      w: 600
+                      h: 600
+
+    # Model Configuration
+    model:
+        name: 'roads_net_v3'
+        stride: 8
+        params:
+            angle_step: 20.0
+
+    tasks:
+        binary_seg:
+            loss: 'bce'
+            weight: 0.8
+        ori_seg:
+            loss: 'bce'
+            weight: 0.2
+
+# Validation Configuration
+validation:
+
+    batch_size: 1
+    val_epochs: 2
+
+    # Dataset Configuration
+    dataset:
+        name: 'roads_dataset_v2'
+        params:
+            training: False
+            root: "$DATASETS/spacenet"
+
+    metric:
+        name: 'miou'
+        params:
+            task: 'binary_seg'
+            num_classes: 2
+
+    # Model Configuration
+    model:
+        name: 'roads_net_v3'
+        stride: 8
+        params:
+            angle_step: 20.0
+
+# test:
+
+#     batch_size: 1
+
+#     # Dataset Configuration
+#     dataset:
+#         name: 'roads_dataset'
+#         params:
+#             training: False
+#             root: "$DATASETS/spacenet"
+
+#     metric:
+#         name: 'per_class_iou'
+#         params:
+#             task: 'binary_seg'
+#             num_classes: 2
+
