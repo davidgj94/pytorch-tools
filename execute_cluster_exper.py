@@ -57,9 +57,7 @@ if __name__ == "__main__":
 		shutil.copyfile(args.config, new_config_path)
 
 	with open(args.config, 'r') as f:
-		exper_str = f.read()
-		if args.exper_params is not None:
-			exper_str.format(**args.exper_params)
+		exper_str = f.read().format(**args.exper_params)
 
 	params_str = get_params_str(args.exper_params)
 	exper_config_path = os.path.join(cfgs_dir, params_str + '.yml')
