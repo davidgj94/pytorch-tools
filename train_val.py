@@ -114,7 +114,7 @@ def main(config, num_epochs, dataset_name, use_cpu=False, max_failed_attemps=2, 
 	if root_checkpoint_dir is None:
 		root_checkpoint_dir = os.path.join('checkpoint', dataset_name)
 	else:
-		root_checkpoint_dir = os.path.join(root_checkpoint_dir, 'checkpoint', dataset_name)
+		root_checkpoint_dir = os.path.join(root_checkpoint_dir, dataset_name)
 		makedir(root_checkpoint_dir)
 	checkpoint_dir = os.path.join(root_checkpoint_dir, exper_name)
 
@@ -142,7 +142,7 @@ def main(config, num_epochs, dataset_name, use_cpu=False, max_failed_attemps=2, 
 		print("CHECKPOINT: {}".format(last_checkpoint_path))
 		print("Learning rate: {}".format(learning_rate))
 
-	optimizer = optim.SGD(model_train.trainable_parameters(base_lr=learning_rate),
+	optimizer = optim.SGD(model_train.trainable_parameters(base_lr=learning_rate, alfa=training_cfg.get("alfa", None)),
 					lr=learning_rate,
 					momentum=0.9, 
 					weight_decay=1e-5)

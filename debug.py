@@ -17,6 +17,7 @@ from torchsummary import summary
 from torchtools.save import CheckpointSaver
 from pathlib import Path
 import matplotlib.pyplot as plt
+from train_val import set_bn_eval
 
 def parse_args():
 	parser = ArgumentParser()
@@ -24,7 +25,8 @@ def parse_args():
 	return parser.parse_args()
 
 def _test(dataset, model):
-	model.eval()
+	# model.eval()
+	model.apply(set_bn_eval)
 	loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0)
 	for _iter, data in tqdm(enumerate(loader), total=len(loader), dynamic_ncols=True):
 		model(data)
@@ -36,7 +38,8 @@ if __name__ == "__main__":
 	id_list_path = os.path.join('list', 'spacenet', 'train.txt')
 	dataset_params.update(id_list_path=id_list_path)
 	dataset = get_dataset(training_cfg["dataset"]['name'])(**dataset_params)
-	model = get_model(num_classes, training_cfg['model'])
-	pdb.set_trace()
+	device = torch.device("cuda:0")
+	model = get_model(num_classes, training_cfg['model']).to(device)
+	model.trainable_parameters(base_lr=training_cfg["learning_rate"], alfa=training_cfg["alfa"])
 	_test(dataset, model)
 	print("Done")

@@ -126,13 +126,14 @@ class RoadsDataset(data.Dataset):
 
 @register.attach('roads_dataset_v2')
 class RoadsDataset_v2(RoadsDataset):
-	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=False, down_label=False, angle_step=15.0, treshold=0.76):
+	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=False, down_label=False, angle_step=15.0, treshold=0.76, filter_gt=False):
 		super(RoadsDataset_v2, self).__init__(root, id_list_path, augmentations=augmentations, 
 																	training=training, 
 																	train_ori=False, 
 																	down_label=down_label,
 																	treshold=treshold)
 		self.angle_step = angle_step
+		self.filter_gt = filter_gt
 
 	def __getitem__(self, index):
 		data = super(RoadsDataset_v2, self).__getitem__(index)
@@ -144,11 +145,11 @@ class RoadsDataset_v2(RoadsDataset):
 				width, height = label.shape
 				label_down = cv2.resize(label.astype(np.uint8), (int(width / 4), int(height / 4)), interpolation=cv2.INTER_NEAREST,)
 				keypoints = getKeypoints(label_down, is_gaussian=False, smooth_dist=3.5)
-				ori_gt = getVectorMapsAngles_v2(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
+				ori_gt, ori_weights = getVectorMapsAngles_v2(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step, filter_gt=self.filter_gt)
 			else:
 				keypoints = getKeypoints(label, is_gaussian=False)
-				ori_gt = getVectorMapsAngles_v2(label.shape, keypoints, theta=10, bin_size=self.angle_step)
-			data.update(ori_seg=dict(label=ori_gt, weights=np.ones_like(ori_gt, dtype=np.float32)))
+				ori_gt, ori_weights = getVectorMapsAngles_v2(label.shape, keypoints, theta=10, bin_size=self.angle_step, filter_gt=self.filter_gt)
+			data.update(ori_seg=dict(label=ori_gt, weights=ori_weights))
 		return data
 
 

@@ -7,6 +7,8 @@ import yaml
 from torchtools.save import makedir
 import shutil
 import sys
+from random import randint
+from time import sleep
 
 RESULTS_DIR = "/export/data_gpm/canard/cluster"
 
@@ -45,6 +47,8 @@ if __name__ == "__main__":
 	exper_dir = os.path.join(RESULTS_DIR, exper_name)
 	cfgs_dir = os.path.join(exper_dir, 'cfgs')
 	checkpoint_dir = os.path.join(exper_dir, 'checkpoint')
+	
+	sleep(randint(1,15))
 
 	makedir(cfgs_dir)
 	makedir(checkpoint_dir)
@@ -53,17 +57,18 @@ if __name__ == "__main__":
 		shutil.copyfile(args.config, new_config_path)
 
 	with open(args.config, 'r') as f:
-		exper_str = f.read().format(**args.exper_params)
+		exper_str = f.read()
+		if args.exper_params is not None:
+			exper_str.format(**args.exper_params)
 
 	params_str = get_params_str(args.exper_params)
 	exper_config_path = os.path.join(cfgs_dir, params_str + '.yml')
-	exper_checkpoint_dir = os.path.join(checkpoint_dir, params_str)
 
 	with open(exper_config_path, 'w') as f:
 		f.write(exper_str)
 	
 	print(params_str)
 	
-	makedir(exper_checkpoint_dir)
+	makedir(checkpoint_dir)
 	
-	train_val(exper_config_path, args.num_epochs, args.dataset, use_cpu=False, root_checkpoint_dir=exper_checkpoint_dir)
+	train_val(exper_config_path, args.num_epochs, args.dataset, use_cpu=False, root_checkpoint_dir=checkpoint_dir)

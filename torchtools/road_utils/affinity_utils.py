@@ -153,7 +153,7 @@ def getVectorMapsAngles(shape, keypoints, theta=5, bin_size=10, margin=0.1):
 	return ori_gt, ori_weights
 
 
-def getVectorMapsAngles_v2(shape, keypoints, theta=5, bin_size=10):
+def getVectorMapsAngles_v2(shape, keypoints, theta=5, bin_size=10, filter_gt=False, margin=0.1):
 	"""
 	Convert Road keypoints obtained from road mask to orientation angle mask.
 	Reference: Section 3.1
@@ -174,7 +174,9 @@ def getVectorMapsAngles_v2(shape, keypoints, theta=5, bin_size=10):
 	n_angles = len(anchor_angles)
 	ori_gt = np.zeros((n_angles,) + shape, dtype=np.float32)
 	if len(keypoints) < 2:
-		return ori_gt[:-1]
+		ori_gt = ori_gt[:-1]
+		ori_weights = np.ones_like(ori_gt)
+		return ori_gt, ori_weights
 
 	rectangle_angles = []
 	rectangle_masks = []
@@ -217,14 +219,29 @@ def getVectorMapsAngles_v2(shape, keypoints, theta=5, bin_size=10):
 		angle_dists = np.abs(rectangle_angles - anchor)
 		ori_gt[idx] = merge_masks(rectangle_masks, angle_dists < max_angle_dist)
 	ori_gt[0] = np.clip(ori_gt[0] + ori_gt[-1], a_min=None, a_max=1.0)
+	ori_gt = ori_gt[:-1]
+	margin_h = int(margin * height) // 2
+	margin_w = int(margin * width) // 2
+	ori_weights = np.zeros_like(ori_gt)
+	ori_weights[..., margin_h:-margin_h, margin_w:-margin_w] = 1.0
+	ori_gt *= ori_weights
+	
+	if filter_gt:
+		hist = np.reshape(ori_gt,(n_angles-1,-1)).sum(1)
+		max_idx = np.argmax(hist)
+		ori_weights = np.zeros_like(ori_gt)
+		ori_weights[max_idx, margin_h:-margin_h, margin_w:-margin_w] = 1.0
 
+	# plt.figure()
+	# plt.imshow(ori_gt.sum(0) > 0.0)
 	# for idx, angle in enumerate(anchor_angles[:-1]):
-	# 	plt.figure()
-	# 	plt.imshow(ori_gt[idx])
-	# 	plt.title("angle:{}".format(angle))
+	# 	if np.any(ori_weights[idx] > 0.0):
+	# 		plt.figure()
+	# 		plt.imshow(ori_gt[idx])
+	# 		plt.title("angle:{}".format(angle))
 	# plt.show()
 
-	return ori_gt[:-1]
+	return ori_gt, ori_weights
 
 
 def convertAngles2VecMap(shape, vecmapAngles):

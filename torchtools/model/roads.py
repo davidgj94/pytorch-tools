@@ -342,7 +342,7 @@ class RoadsNet_v3(Deeplabv3_Roads):
 																	groups=norm_groups)
 		
 		self.fuse_layer2 =  nn.Sequential(
-			nn.Conv2d(256 + layer2_channels, ori_decoder_planes[0], kernel_size=1, stride=1, bias=False),
+			nn.Conv2d(256 + layer2_channels, ori_decoder_planes[0], kernel_size=3, stride=1, bias=False, padding=padding(1,3)),
 			nn.GroupNorm(norm_groups, ori_decoder_planes[0]),
 			nn.ReLU(),)
 		self.fuse_layer2.apply(init_conv)
@@ -358,7 +358,8 @@ class RoadsNet_v3(Deeplabv3_Roads):
 			nn.Conv2d(ori_decoder_planes[1] * self.n_angles, ori_decoder_planes[2], 
 												kernel_size=ori_fuse_ks, 
 												stride=1, 
-												bias=False),
+												bias=False,
+												padding=padding(1, ori_fuse_ks)),
 			nn.GroupNorm(norm_groups, ori_decoder_planes[2]),
 			nn.ReLU(),)
 		self.ori_fuse.apply(init_conv)
@@ -392,21 +393,52 @@ class RoadsNet_v3(Deeplabv3_Roads):
 
 		x_decoder2 = self.ori_fuse(torch.cat(x_ori, dim=1))
 		return torch.cat(x_ori, dim=0), x_decoder2
-	
-	def trainable_parameters(self, base_lr, alfa=10.0):
+
+
+	def trainable_parameters(self, base_lr, alfa, debug=True):
 
 		pretrained_params = []
+		pretrained_params_name = []
+
 		new_params = []
+		new_params_name = []
+
+		clf_params = []
+		clf_params_name = []
+
 		for name, params in self.named_parameters():
-			if ("assp" in name) or ("backbone" in name):
+			if ("aspp" in name) or ("backbone" in name):
 				pretrained_params.append(params)
+				pretrained_params_name.append(name)
+			elif ("classifier" in name) or ("aux_clf_ori" in name):
+				clf_params.append(params)
+				clf_params_name.append(name)
 			else:
 				new_params.append(params)
+				new_params_name.append(name)
+
+		params_groups = [{'params': iter(clf_params), 'lr': base_lr}, 
+						 {'params': iter(new_params), 'lr': base_lr / alfa[0]},
+						 {'params': iter(pretrained_params), 'lr': base_lr / alfa[1]}]
 		
-		params_groups = [{'params': iter(new_params), 'lr': base_lr}, 
-						 {'params': iter(pretrained_params), 'lr': base_lr / alfa}]
-		
+		if debug:
+			for params_names, group_name, _param_group in zip([clf_params_name, new_params_name, pretrained_params_name], 
+												['cls_params',    'new_params',    'pretrained_params'],
+												params_groups):
+				lr = _param_group['lr']
+				print(">>>>>>>>> {}:".format(group_name))
+				print(">>>>>>>>> Learning rate: {}".format(lr))
+				for name in params_names:
+					print("-- {}".format(name))
+				print()
+
 		return params_groups
+
+	def eval(self,):
+		super(RoadsNet_v3, self).eval()
+		for module in self.ori_conv._modules.values():
+			if isinstance(module, OrientedConv2d):
+				module.eval()
 
 
 	def forward(self, inputs):
@@ -421,7 +453,7 @@ class RoadsNet_v3(Deeplabv3_Roads):
 		if self.training:
 			ori_label_shape = inputs["ori_seg"]["label"].shape[-2:]
 			seg_ori = compute_seg(x_ori, ori_label_shape, self.aux_clf_ori).squeeze(1).unsqueeze(0)
-		
+
 		x_decoder2_up = F.interpolate(x_decoder2, size=x_decoder1.shape[-2:], mode='bilinear', align_corners=False)
 		x_concat = torch.cat([x_decoder1, x_decoder2_up], dim=1)
 		x_out = self.fuse_decoders(x_concat)
@@ -438,6 +470,178 @@ class RoadsNet_v3(Deeplabv3_Roads):
 			result['binary_seg']['seg'] = (seg.squeeze(1) > 0).cpu()
 		
 		return result
+
+class RoadsDecoder(nn.Module):
+
+	def __init__(self, layer1_channels, layer2_channels, ori_planes, ori_grid_size, angle_step, norm_groups):
+
+		super(RoadsDecoder, self).__init__()
+
+		self.n_angles = len(np.arange(0.0, 180.0, angle_step))
+
+		self.reduce_layer1 = nn.Sequential(
+			nn.Conv2d(256, layer1_channels, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(norm_groups, layer1_channels),
+			nn.ReLU(),
+			nn.Dropout(0.5))
+		self.reduce_layer1.apply(init_conv)
+
+		self.reduce_layer2 = nn.Sequential(
+			nn.Conv2d(512, layer2_channels, kernel_size=1, stride=1, bias=False),
+			nn.GroupNorm(norm_groups, layer2_channels),
+			nn.ReLU(),
+			nn.Dropout(0.5))
+		self.reduce_layer2.apply(init_conv)
+
+		self.fuse_layer2 =  nn.Sequential(
+			nn.Conv2d(256 + layer2_channels, ori_planes[0], kernel_size=3, 
+															stride=1,
+															bias=False,
+															padding=padding(1, 3)),
+			nn.GroupNorm(norm_groups, ori_planes[0]),
+			nn.ReLU(),)
+		self.fuse_layer2.apply(init_conv)
+
+		ori_kernel_size = ori_grid_size + 8
+		self.ori_conv = nn.Sequential(
+			OrientedConv2d(ori_planes[0], ori_planes[1], kernel_size=ori_kernel_size, 
+														 padding=padding(1, ori_grid_size),
+														 dilation=1,
+														 angle_step=angle_step),
+			nn.GroupNorm(norm_groups, ori_planes[1]),
+			nn.ReLU(),)
+		self.ori_conv.apply(init_conv)
+
+		self.ori_fuse = nn.Sequential(
+			nn.Conv2d(ori_planes[1] * self.n_angles, ori_planes[2], kernel_size=3, 
+																	stride=1, 
+																	bias=False,
+																	padding=padding(1, 3)),
+			nn.GroupNorm(norm_groups, ori_planes[2]),
+			nn.ReLU(),)
+		self.ori_fuse.apply(init_conv)
+
+		self.res_conv = nn.Conv2d(ori_planes[2] + 256, 256, kernel_size=1, 
+															stride=1, 
+															bias=False)
+		init_conv(self.res_conv)
+		
+		fuse_layer1_channels = [256 + layer1_channels, 256, 256]
+		self.fuse_layer1 = create_convnet(nn.Conv2d, fuse_layer1_channels, kernel_size=3, 
+																		   padding=padding(1, 3), 
+																		   dilation=1, 
+																		   groups=norm_groups,)
+
+
+	def forward_layer2(self, x_aspp, x_layer2):
+		x_layer2 = self.reduce_layer2(x_layer2)
+		x_fuse = self.fuse_layer2(torch.cat([x_layer2, x_aspp], dim=1))
+		x_ori = []
+		for idx in np.arange(self.n_angles):
+			x_ori.append(forward_ori(self.ori_conv, x_fuse, idx))
+		return x_ori
+
+	def forward_layer1(self, x_aspp, x_layer1):
+		x_layer1 = self.reduce_layer1(x_layer1)
+		x_aspp_up = F.interpolate(x_aspp, size=x_layer1.shape[-2:], mode='bilinear', align_corners=False)
+		x_concat = torch.cat([x_layer1, x_aspp_up], dim=1)
+		return self.fuse_layer1(x_concat)
+
+	def forward(self, x_aspp, x_layer1, x_layer2):
+		x_ori = self.forward_layer2(x_aspp, x_layer2)
+		x_ori_fused = self.ori_fuse(torch.cat(x_ori, dim=1))
+		x_res = self.res_conv(torch.cat([x_ori_fused, x_aspp], dim=1))
+		x_aspp = F.relu(x_aspp + x_res)
+		x_out = self.forward_layer1(x_aspp, x_layer1)
+		return x_out, torch.cat(x_ori, dim=0)
+
+
+@register.attach('roads_net_decoder')
+class RoadsNet_Decoder(Deeplabv3_Roads):
+	def __init__(self, n_classes, pretrained_model,
+					min_angle=0.0, max_angle=180.0, angle_step=15.0,
+					layer1_channels=48, layer2_channels=64, ori_planes=[128, 64, 128], ori_grid_size=7,
+					norm_groups=8, freeze_backbone=False, freeze_aspp=False):
+
+		super(RoadsNet_Decoder, self).__init__(n_classes, pretrained_model, 
+													freeze_backbone=freeze_backbone,
+													freeze_aspp=freeze_aspp)
+
+		self.decoder = RoadsDecoder(layer1_channels, layer2_channels, ori_planes, ori_grid_size, angle_step, norm_groups)
+		self.aux_clf_ori = self.aux_clf_ori = nn.Conv2d(ori_planes[1], 1, kernel_size=1, stride=1, bias=False)
+		init_conv(self.aux_clf_ori)
+	
+	def eval(self,):
+		super(RoadsNet_Decoder, self).eval()
+		for module in self.decoder.ori_conv._modules.values():
+			if isinstance(module, OrientedConv2d):
+				module.eval()
+	
+	def trainable_parameters(self, base_lr, alfa, debug=True):
+
+		pretrained_params = []
+		pretrained_params_name = []
+
+		new_params = []
+		new_params_name = []
+
+		clf_params = []
+		clf_params_name = []
+
+		for name, params in self.named_parameters():
+			if ("aspp" in name) or ("backbone" in name):
+				pretrained_params.append(params)
+				pretrained_params_name.append(name)
+			elif ("classifier" in name) or ("aux_clf_ori" in name):
+				clf_params.append(params)
+				clf_params_name.append(name)
+			else:
+				new_params.append(params)
+				new_params_name.append(name)
+
+		params_groups = [{'params': iter(clf_params), 'lr': base_lr}, 
+						 {'params': iter(new_params), 'lr': base_lr / alfa[0]},
+						 {'params': iter(pretrained_params), 'lr': base_lr / alfa[1]}]
+		
+		if debug:
+			for params_names, group_name, _param_group in zip([clf_params_name, new_params_name, pretrained_params_name], 
+												['cls_params',    'new_params',    'pretrained_params'],
+												params_groups):
+				lr = _param_group['lr']
+				print(">>>>>>>>> {}:".format(group_name))
+				print(">>>>>>>>> Learning rate: {}".format(lr))
+				for name in params_names:
+					print("-- {}".format(name))
+				print()
+
+		return params_groups
+
+	
+	def forward(self, inputs):
+		input_shape = inputs["image"].shape[-2:]
+		features = super(RoadsNet_Decoder, self).forward(inputs, return_intermediate=True)
+		x_aspp = features["aspp"]
+		x_layer1 = features["layer1"]
+		x_layer2 = features["layer2"]
+		x_out, x_ori = self.decoder(x_aspp, x_layer1, x_layer2)
+
+		seg = compute_seg(x_out, input_shape, self.classifier).squeeze(1)
+		if self.training:
+			ori_label_shape = inputs["ori_seg"]["label"].shape[-2:]
+			seg_ori = compute_seg(x_ori, ori_label_shape, self.aux_clf_ori).squeeze(1).unsqueeze(0)
+		
+		result = OrderedDict()
+		if self.training:
+			result['binary_seg'] = OrderedDict()
+			result['ori_seg'] = OrderedDict()
+			result['binary_seg']['seg'] = seg
+			result['ori_seg']['seg'] = seg_ori
+		else:
+			result['binary_seg'] = OrderedDict()
+			result['binary_seg']['seg'] = (seg.squeeze(1) > 0).cpu()
+		
+		return result
+
 
 
 class OrientedConv2d(_ConvNd):
