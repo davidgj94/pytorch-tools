@@ -11,11 +11,10 @@ training:
 
     # Dataset Configuration
     dataset:
-        name: 'roads_dataset_v2'
+        name: 'roads_dataset'
         params:
             root: "$DATASETS/spacenet"
             down_label: True
-            filter_gt: True
             angle_step: 15.0
             augmentations:
                 - random_flip:
@@ -29,7 +28,7 @@ training:
         stride: 8
         params:
             res_kernel_size: 1
-            sum_aux_ori: False
+            sum_aux_ori: True
             aux_hidden_kz: 0
             angle_step: 15.0
 
@@ -49,7 +48,7 @@ validation:
 
     # Dataset Configuration
     dataset:
-        name: 'roads_dataset_v2'
+        name: 'roads_dataset'
         params:
             training: False
             root: "$DATASETS/spacenet"
@@ -66,7 +65,7 @@ validation:
         stride: 8
         params:
             res_kernel_size: 1
-            sum_aux_ori: False
+            sum_aux_ori: True
             aux_hidden_kz: 0
             angle_step: 15.0
 

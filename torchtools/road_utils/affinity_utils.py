@@ -214,7 +214,7 @@ def getVectorMapsAngles_v2(shape, keypoints, theta=5, bin_size=10, filter_gt=Fal
 
 	rectangle_angles = np.array(rectangle_angles)
 	rectangle_masks = np.stack(rectangle_masks, axis=0)
-	max_angle_dist = bin_size
+	max_angle_dist = bin_size * 0.65
 	for idx, anchor in enumerate(anchor_angles):
 		angle_dists = np.abs(rectangle_angles - anchor)
 		ori_gt[idx] = merge_masks(rectangle_masks, angle_dists < max_angle_dist)

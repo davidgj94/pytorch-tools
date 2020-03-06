@@ -31,7 +31,7 @@ class RoadsDataset(data.Dataset):
 	"""
 	Base dataset class
 	"""
-	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=False, down_label=False, angle_step=15.0, treshold=0.76):
+	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=True, down_label=False, angle_step=15.0, treshold=0.76):
 
 		self.id_list = np.loadtxt(id_list_path, dtype=str)
 		self.mean = [0.485, 0.456, 0.406]

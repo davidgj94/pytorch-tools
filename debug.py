@@ -41,5 +41,6 @@ if __name__ == "__main__":
 	device = torch.device("cuda:0")
 	model = get_model(num_classes, training_cfg['model']).to(device)
 	model.trainable_parameters(base_lr=training_cfg["learning_rate"], alfa=training_cfg["alfa"])
+	pdb.set_trace()
 	_test(dataset, model)
 	print("Done")

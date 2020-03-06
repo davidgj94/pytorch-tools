@@ -28,9 +28,9 @@ training:
         name: 'roads_net_decoder'
         stride: 8
         params:
-            res_kernel_size: 1
+            res_kernel_size: {res_kernel_size}
             sum_aux_ori: False
-            aux_hidden_kz: 0
+            aux_hidden_kz: {aux_hidden_kz}
             angle_step: 15.0
 
     tasks:
@@ -65,9 +65,9 @@ validation:
         name: 'roads_net_decoder'
         stride: 8
         params:
-            res_kernel_size: 1
+            res_kernel_size: {res_kernel_size}
             sum_aux_ori: False
-            aux_hidden_kz: 0
+            aux_hidden_kz: {aux_hidden_kz}
             angle_step: 15.0
 
 # test:
