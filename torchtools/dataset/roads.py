@@ -84,10 +84,13 @@ class RoadsDataset(data.Dataset):
 
 		if self.training and self.train_ori:
 
+			plt.figure()
+			plt.imshow(label)
+
 			if self.down_label:
 				width, height = label.shape
 				label_down = cv2.resize(label.astype(np.uint8), (int(width / 4), int(height / 4)), interpolation=cv2.INTER_NEAREST,)
-				keypoints = getKeypoints(label_down, is_gaussian=False, smooth_dist=5)
+				keypoints = getKeypoints(label_down, is_gaussian=False, smooth_dist=10)
 				getVectorMapsAngles_v2(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
 				ori_gt, ori_weights = getVectorMapsAngles(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
 			else:

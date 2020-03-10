@@ -594,7 +594,7 @@ class RoadsNet_Decoder(Deeplabv3_Roads):
 	
 	def eval(self,):
 		super(RoadsNet_Decoder, self).eval()
-		for module in self.decoder.ori_conv._modules.values():
+		for module in self.decoder.ori_net._modules.values():
 			if isinstance(module, OrientedConv2d):
 				module.eval()
 	
