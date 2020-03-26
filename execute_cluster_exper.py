@@ -56,16 +56,22 @@ if __name__ == "__main__":
 	if not os.path.exists(new_config_path):
 		shutil.copyfile(args.config, new_config_path)
 
-	with open(args.config, 'r') as f:
-		exper_str = f.read().format(**args.exper_params)
+	if args.exper_params is not None:
 
-	params_str = get_params_str(args.exper_params)
-	exper_config_path = os.path.join(cfgs_dir, params_str + '.yml')
+		with open(args.config, 'r') as f:
+			exper_str = f.read().format(**args.exper_params)
 
-	with open(exper_config_path, 'w') as f:
-		f.write(exper_str)
+		params_str = get_params_str(args.exper_params)
+		exper_config_path = os.path.join(cfgs_dir, params_str + '.yml')
+
+		with open(exper_config_path, 'w') as f:
+			f.write(exper_str)
+		
+		print(params_str)
 	
-	print(params_str)
+	else:
+		exper_config_path = new_config_path
+
 	
 	makedir(checkpoint_dir)
 	

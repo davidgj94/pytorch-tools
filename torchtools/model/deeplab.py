@@ -199,4 +199,6 @@ class Dummy:
 		print("Dummy")
 	def __call__(self, inputs):
 		return 0.0
+	def to(self, device):
+		return self
 

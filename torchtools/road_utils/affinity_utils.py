@@ -93,13 +93,12 @@ def getVectorMapsAngles(shape, keypoints, theta=5, bin_size=10, margin=0.1):
 	n_angles = len(anchor_angles)
 	ori_gt = np.zeros((n_angles - 1, height, width), dtype=np.float32)
 	ori_weights = np.zeros_like(ori_gt, dtype=np.float32)
-	if len(keypoints) < 2:
+	if len(keypoints) < 1:
 		return ori_gt, ori_weights
 
 	rectangle_angles = []
 	rectangle_masks = []
 	for j in range(len(keypoints)):
-		_mask_aux = np.zeros(shape, dtype=np.float32)
 		for i in range(1, len(keypoints[j])):
 
 			a = keypoints[j][i - 1]
@@ -129,10 +128,7 @@ def getVectorMapsAngles(shape, keypoints, theta=5, bin_size=10, margin=0.1):
 					dis = abs(bax * py - bay * px)
 					if dis <= theta:
 						_mask[h, w] = 1.0
-			_mask_aux += _mask
 			rectangle_masks.append(_mask)
-		# plt.imshow(np.clip(_mask_aux, a_min=0.0, a_max=1.0))
-		# plt.show()
 
 	rectangle_angles = np.array(rectangle_angles)
 	rectangle_masks = np.stack(rectangle_masks, axis=0)
@@ -141,23 +137,20 @@ def getVectorMapsAngles(shape, keypoints, theta=5, bin_size=10, margin=0.1):
 		angle_dists = rectangle_angles - anchor
 		ori_gt[idx] = merge_masks(rectangle_masks, np.logical_and(0 < angle_dists, angle_dists < bin_size))
 	
-	return ori_gt, np.zeros_like(ori_gt)
+	margin_h = int(margin * height) // 2
+	margin_w = int(margin * width) // 2
+	margin_mask = np.zeros_like(ori_gt, dtype=np.float32)
+	margin_mask[..., margin_h:-margin_h, margin_w:-margin_w] = 1.0
+	ori_gt *= margin_mask
 
-	# margin_h = int(margin * height) // 2
-	# margin_w = int(margin * width) // 2
-	# margin_mask = np.zeros_like(ori_gt, dtype=np.float32)
-	# margin_mask[..., margin_h:-margin_h, margin_w:-margin_w] = 1.0
-	# ori_gt *= margin_mask
+	max_idx = np.argmax(np.reshape(ori_gt, (n_angles-1, -1)).sum(1))
+	ori_weights[max_idx, margin_h:-margin_h, margin_w:-margin_w] = 1.0
+	prev_idx = max_idx - 1
+	next_idx = (max_idx + 1) % (n_angles - 1)
+	ignore = np.clip(ori_gt[prev_idx] + ori_gt[next_idx], a_min=None, a_max=1.0)
+	ori_weights[max_idx] -= ignore
 
-	# max_idx = np.argmax(np.reshape(ori_gt, (n_angles-1, -1)).sum(1))
-	# ori_weights[max_idx, margin_h:-margin_h, margin_w:-margin_w] = 1.0
-	# prev_idx = max_idx - 1
-	# next_idx = (max_idx + 1) % (n_angles - 1)
-	# ignore = np.clip(ori_gt[prev_idx] + ori_gt[next_idx], a_min=None, a_max=1.0)
-	# ignore = np.clip(ignore - ori_gt[max_idx], a_min=0.0, a_max=None)
-	# ori_weights[max_idx] -= ignore
-
-	# return ori_gt, ori_weights
+	return ori_gt, ori_weights
 
 
 def getVectorMapsAngles_v2(shape, keypoints, theta=5, bin_size=10, filter_gt=False, margin=0.1):

@@ -1,4 +1,4 @@
-import matplotlib
+import matplotlib; matplotlib.use('tkagg')
 import random
 import numpy as np
 import torch
@@ -31,7 +31,7 @@ class RoadsDataset(data.Dataset):
 	"""
 	Base dataset class
 	"""
-	def __init__(self, root, id_list_path, augmentations=[], training=True, train_ori=True, down_label=False, angle_step=15.0, treshold=0.76):
+	def __init__(self, root, id_list_path, augmentations=[], training=True, angle_step=None, treshold=0.76):
 
 		self.id_list = np.loadtxt(id_list_path, dtype=str)
 		self.mean = [0.485, 0.456, 0.406]
@@ -45,10 +45,12 @@ class RoadsDataset(data.Dataset):
 		self.root = os.path.expandvars(self.root)
 		self.treshold = treshold
 
-		self.train_ori = train_ori
-		self.down_label = down_label
-		if self.train_ori:
+		if angle_step is not None:
+			self.train_ori = True
 			self.angle_step = angle_step
+		else:
+			self.train_ori = False
+		
 
 	def _load_data(self, idx):
 		"""
@@ -84,33 +86,17 @@ class RoadsDataset(data.Dataset):
 
 		if self.training and self.train_ori:
 
-			plt.figure()
-			plt.imshow(label)
-
-			# width, height = label.shape
-			# label_down = cv2.resize(label.astype(np.uint8), (int(width / 4), int(height / 4)), interpolation=cv2.INTER_NEAREST,)
-			# keypoints = getKeypoints(label_down, is_gaussian=False, smooth_dist=10)
-			# getVectorMapsAngles_v2(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
-			# ori_gt, ori_weights = getVectorMapsAngles(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
-
 			# plt.figure()
-			# plt.imshow(np.clip(ori_gt.sum(0), a_min=0.0, a_max=1.0))
+			# plt.imshow(label)
 
 			keypoints = getKeypoints(label, is_gaussian=False)
 			ori_gt, ori_weights = getVectorMapsAngles(label.shape, keypoints, theta=10, bin_size=self.angle_step)
 
-			plt.figure()
-			plt.imshow(np.clip(ori_gt.sum(0), a_min=0.0, a_max=1.0))
-			plt.show()
+			# plt.figure()
+			# plt.imshow(np.clip(ori_gt.sum(0), a_min=0.0, a_max=1.0))
 
 			data.update(ori_seg=dict(label=ori_gt, weights=ori_weights))
 
-			# ori_gt_sum = np.clip(ori_gt.sum(0), a_min=0.0, a_max=1.0)
-			# plt.figure()
-			# plt.imshow(label_down)
-			# plt.figure()
-			# plt.imshow(ori_gt_sum)
-			# plt.show()
 			# for idx in np.arange(len(ori_weights)):
 			# 	_ori_weights = ori_weights[idx]
 			# 	_ori_gt = ori_gt[idx]
@@ -119,9 +105,7 @@ class RoadsDataset(data.Dataset):
 			# 		plt.imshow(_ori_gt)
 			# 		plt.figure()
 			# 		plt.imshow(_ori_weights)
-			# 		plt.figure()
-			# 		plt.imshow(label)
-			# 		plt.show()
+			# plt.show()
 
 		return data
 
