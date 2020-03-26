@@ -87,15 +87,21 @@ class RoadsDataset(data.Dataset):
 			plt.figure()
 			plt.imshow(label)
 
-			if self.down_label:
-				width, height = label.shape
-				label_down = cv2.resize(label.astype(np.uint8), (int(width / 4), int(height / 4)), interpolation=cv2.INTER_NEAREST,)
-				keypoints = getKeypoints(label_down, is_gaussian=False, smooth_dist=10)
-				getVectorMapsAngles_v2(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
-				ori_gt, ori_weights = getVectorMapsAngles(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
-			else:
-				keypoints = getKeypoints(label, is_gaussian=False)
-				ori_gt, ori_weights = getVectorMapsAngles(label.shape, keypoints, theta=10, bin_size=self.angle_step)
+			# width, height = label.shape
+			# label_down = cv2.resize(label.astype(np.uint8), (int(width / 4), int(height / 4)), interpolation=cv2.INTER_NEAREST,)
+			# keypoints = getKeypoints(label_down, is_gaussian=False, smooth_dist=10)
+			# getVectorMapsAngles_v2(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
+			# ori_gt, ori_weights = getVectorMapsAngles(label_down.shape, keypoints, theta=3.5, bin_size=self.angle_step)
+
+			# plt.figure()
+			# plt.imshow(np.clip(ori_gt.sum(0), a_min=0.0, a_max=1.0))
+
+			keypoints = getKeypoints(label, is_gaussian=False)
+			ori_gt, ori_weights = getVectorMapsAngles(label.shape, keypoints, theta=10, bin_size=self.angle_step)
+
+			plt.figure()
+			plt.imshow(np.clip(ori_gt.sum(0), a_min=0.0, a_max=1.0))
+			plt.show()
 
 			data.update(ori_seg=dict(label=ori_gt, weights=ori_weights))
 
